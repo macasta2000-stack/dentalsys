@@ -1,0 +1,27 @@
+{
+  "name": "dentalsys",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "db:init": "wrangler d1 execute dentalsys-db --file=schema.sql",
+    "db:local": "wrangler d1 execute dentalsys-db --local --file=schema.sql"
+  },
+  "dependencies": {
+    "date-fns": "^3.3.1",
+    "dexie": "^3.2.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0",
+    "recharts": "^2.10.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.8",
+    "wrangler": "^3.28.0"
+  }
+}

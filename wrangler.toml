@@ -1,0 +1,14 @@
+name = "dentalsys"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dentalsys-db"
+database_id = "REEMPLAZAR-CON-TU-D1-ID"
+# ↑ Reemplazá con tu database_id real de: wrangler d1 list
+
+[vars]
+JWT_SECRET = "REEMPLAZAR-CON-SECRET-SEGURO-32-CHARS"
+# ↑ Generá uno con: openssl rand -hex 32
+APP_ENV = "production"
