@@ -5,10 +5,8 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "dentalsys-db"
-database_id = "REEMPLAZAR-CON-TU-D1-ID"
-# ↑ Reemplazá con tu database_id real de: wrangler d1 list
+database_id = "a619cc4f-6427-48de-8665-2e3a6d019357"
 
 [vars]
-JWT_SECRET = "REEMPLAZAR-CON-SECRET-SEGURO-32-CHARS"
-# ↑ Generá uno con: openssl rand -hex 32
+JWT_SECRET = "60d77cc1cdb4805020e6fd3c857bee47cb10ca4b5475323c576aeb57e5e16388"
 APP_ENV = "production"

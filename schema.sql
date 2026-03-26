@@ -3,8 +3,9 @@
 -- Ejecutar: npm run db:init
 -- ============================================================
 
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
+-- PRAGMAs removidos: D1 maneja journal_mode internamente
+-- PRAGMA journal_mode=WAL;
+-- PRAGMA foreign_keys=ON;
 
 -- ============================================================
 -- USUARIOS (auth interno)
