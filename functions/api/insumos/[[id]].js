@@ -42,16 +42,29 @@ export async function onRequestPatch({ request, data, env, params }) {
 
   // Si viene ajuste de stock, crear movimiento
   if (body._movimiento) {
-    const { tipo, cantidad, motivo } = body._movimiento
-    await insert(env.DB, 'movimientos_insumos', {
-      id: newId(), tenant_id: user.sub, insumo_id: id,
-      tipo, cantidad: Number(cantidad), motivo: motivo ?? null,
-    })
-    // Ajustar stock
-    const delta = tipo === 'entrada' ? Number(cantidad) : tipo === 'salida' ? -Number(cantidad) : Number(cantidad)
-    await env.DB.prepare(
-      `UPDATE insumos SET stock_actual = stock_actual + ?1, updated_at = datetime('now') WHERE id = ?2 AND tenant_id = ?3`
-    ).bind(delta, id, user.sub).run()
+    const { tipo, cantidad, motivo, descripcion } = body._movimiento
+    if (tipo === 'ajuste') {
+      // Para ajuste, obtener stock actual y calcular delta para llegar al nuevo valor
+      const insumoActual = await findOne(env.DB, 'insumos', { where: { id, tenant_id: user.sub } })
+      const stockActual = insumoActual ? Number(insumoActual.stock_actual) : 0
+      const delta = Number(cantidad) - stockActual
+      await insert(env.DB, 'movimientos_insumos', {
+        id: newId(), tenant_id: user.sub, insumo_id: id,
+        tipo, cantidad: Number(cantidad), motivo: motivo ?? null, descripcion: descripcion ?? null,
+      })
+      await env.DB.prepare(
+        `UPDATE insumos SET stock_actual = ?1, updated_at = datetime('now') WHERE id = ?2 AND tenant_id = ?3`
+      ).bind(Number(cantidad), id, user.sub).run()
+    } else {
+      const delta = tipo === 'entrada' ? Number(cantidad) : -Number(cantidad)
+      await insert(env.DB, 'movimientos_insumos', {
+        id: newId(), tenant_id: user.sub, insumo_id: id,
+        tipo, cantidad: Number(cantidad), motivo: motivo ?? null, descripcion: descripcion ?? null,
+      })
+      await env.DB.prepare(
+        `UPDATE insumos SET stock_actual = stock_actual + ?1, updated_at = datetime('now') WHERE id = ?2 AND tenant_id = ?3`
+      ).bind(delta, id, user.sub).run()
+    }
   }
 
   const cleanBody = pick('insumos', body)

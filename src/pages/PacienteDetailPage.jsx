@@ -82,7 +82,7 @@ export default function PacienteDetailPage() {
 
   // Receta
   const [modalReceta, setModalReceta] = useState(false)
-  const [recetaMeds, setRecetaMeds] = useState([{ medicamento: '', concentracion: '', forma: '', dosis: '', posologa: '', cantidad: '', dias: '' }])
+  const [recetaMeds, setRecetaMeds] = useState([{ medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
 
   const [saving, setSaving] = useState(false)
 
@@ -311,9 +311,88 @@ export default function PacienteDetailPage() {
     setAnamnesisForm(f => ({ ...f, medicacion: f.medicacion.filter((_, i) => i !== idx) }))
   }
 
+  // Presupuestos
+  const [modalPresupuesto, setModalPresupuesto] = useState(false)
+  const [presupuestoDetalle, setPresupuestoDetalle] = useState(null) // presupuesto abierto para ver/editar
+  const [presupuestoDetalleData, setPresupuestoDetalleData] = useState(null) // datos completos con items
+  const [presupuestoForm, setPresupuestoForm] = useState({ notas: '', fecha_vencimiento: '' })
+  const [presupuestoItems, setPresupuestoItems] = useState([{ prestacion_id: '', descripcion: '', cantidad: 1, precio_unitario: '' }])
+  const [presupuestoSaving, setPresupuestoSaving] = useState(false)
+
+  function openNuevoPresupuesto() {
+    setPresupuestoForm({ notas: '', fecha_vencimiento: '' })
+    setPresupuestoItems([{ prestacion_id: '', descripcion: '', cantidad: 1, precio_unitario: '' }])
+    setPresupuestoDetalle(null)
+    setModalPresupuesto(true)
+  }
+
+  async function openPresupuestoDetalle(p) {
+    try {
+      const data = await api.presupuestos.get(p.id)
+      setPresupuestoDetalleData(data)
+      setPresupuestoDetalle(p)
+      setPresupuestoItems((data.items ?? []).map(i => ({
+        prestacion_id: i.prestacion_id ?? '',
+        descripcion: i.descripcion ?? '',
+        cantidad: i.cantidad ?? 1,
+        precio_unitario: String(i.precio_unitario ?? 0),
+      })))
+      setPresupuestoForm({ notas: data.notas ?? '', fecha_vencimiento: data.fecha_vencimiento ?? '' })
+      setModalPresupuesto(true)
+    } catch (e) { alert(e.message) }
+  }
+
+  function addPresupuestoItem() {
+    setPresupuestoItems(prev => [...prev, { prestacion_id: '', descripcion: '', cantidad: 1, precio_unitario: '' }])
+  }
+
+  function removePresupuestoItem(idx) {
+    setPresupuestoItems(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  function setPresupuestoItem(idx, k, v) {
+    setPresupuestoItems(prev => prev.map((item, i) => i === idx ? { ...item, [k]: v } : item))
+  }
+
+  const presupuestoTotal = presupuestoItems.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precio_unitario) || 0), 0)
+
+  async function handlePresupuestoSave(e) {
+    e.preventDefault()
+    const items = presupuestoItems.filter(i => i.descripcion.trim())
+    if (!items.length) { alert('Agregar al menos un ítem con descripción'); return }
+    setPresupuestoSaving(true)
+    try {
+      const payload = {
+        paciente_id: id,
+        items: items.map(i => ({
+          prestacion_id: i.prestacion_id || null,
+          descripcion: i.descripcion,
+          cantidad: Number(i.cantidad) || 1,
+          precio_unitario: Number(i.precio_unitario) || 0,
+        })),
+        notas: presupuestoForm.notas || null,
+        fecha_vencimiento: presupuestoForm.fecha_vencimiento || null,
+        estado: 'pendiente',
+      }
+      if (presupuestoDetalle) {
+        const updated = await api.presupuestos.update(presupuestoDetalle.id, payload)
+        setPresupuestos(prev => prev.map(p => p.id === presupuestoDetalle.id ? { ...p, ...updated } : p))
+      } else {
+        const created = await api.presupuestos.create(payload)
+        setPresupuestos(prev => [created, ...prev])
+      }
+      setModalPresupuesto(false)
+    } catch (err) { alert(err.message) }
+    finally { setPresupuestoSaving(false) }
+  }
+
+  function printPresupuesto(pres, items) {
+    window.print()
+  }
+
   // Receta
   function addMedReceta() {
-    setRecetaMeds(m => [...m, { medicamento: '', concentracion: '', forma: '', dosis: '', posologa: '', cantidad: '', dias: '' }])
+    setRecetaMeds(m => [...m, { medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
   }
 
   function setRecetaMed(idx, k, v) {
@@ -335,8 +414,8 @@ export default function PacienteDetailPage() {
 
   return (
     <div>
-      {/* CSS de impresión para recetas */}
-      <style>{`@media print { body > * { display: none; } .receta-print { display: block !important; } .modal-overlay { position: static !important; background: none !important; padding: 0 !important; } .modal { box-shadow: none !important; max-height: none !important; } }`}</style>
+      {/* CSS de impresión para recetas y presupuestos */}
+      <style>{`@media print { body > * { display: none; } .receta-print { display: block !important; } .presupuesto-print { display: block !important; } .modal-overlay { position: static !important; background: none !important; padding: 0 !important; } .modal { box-shadow: none !important; max-height: none !important; } }`}</style>
 
       {/* Header paciente */}
       <div className="pd-header">
@@ -529,14 +608,42 @@ export default function PacienteDetailPage() {
 
       {/* ODONTOGRAMA */}
       {tab === 'odontograma' && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Odontograma Interactivo</span>
-            <span className="text-sm text-muted">Hacé clic en una pieza para editarla</span>
+        <div>
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Odontograma Interactivo</span>
+              <span className="text-sm text-muted">Hacé clic en una pieza para editarla</span>
+            </div>
+            <div className="card-body">
+              <Odontograma piezas={piezas} onPiezaClick={handlePiezaClick} />
+            </div>
           </div>
-          <div className="card-body">
-            <Odontograma piezas={piezas} onPiezaClick={handlePiezaClick} />
-          </div>
+
+          {/* Panel de edición de pieza seleccionada */}
+          {piezaSel !== null && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="card-header">
+                <span className="card-title">Pieza N° {piezaSel}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPiezaSel(null)}>Cancelar</button>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-group">
+                  <label className="form-label">Estado</label>
+                  <select className="form-input" value={piezaEstado} onChange={e => setPiezaEstado(e.target.value)}>
+                    {ESTADOS_OD.map(e => <option key={e} value={e}>{ESTADO_LABEL[e]}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Observaciones</label>
+                  <textarea className="form-input" rows={3} value={piezaNota} onChange={e => setPiezaNota(e.target.value)} placeholder="Observaciones sobre esta pieza..." />
+                </div>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-ghost" onClick={() => setPiezaSel(null)}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={savePieza} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -574,21 +681,25 @@ export default function PacienteDetailPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Presupuestos</span>
+            <button className="btn btn-primary btn-sm" onClick={openNuevoPresupuesto}>+ Nuevo Presupuesto</button>
           </div>
           {presupuestos.length === 0 ? (
             <div className="empty-state"><div className="empty-icon">💼</div><div className="empty-title">Sin presupuestos</div></div>
           ) : (
             <div className="table-wrapper">
               <table className="table">
-                <thead><tr><th>Nº</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Nº</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Estado</th><th></th></tr></thead>
                 <tbody>
                   {presupuestos.map(p => (
-                    <tr key={p.id}>
+                    <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => openPresupuestoDetalle(p)}>
                       <td className="td-main">#{p.numero}</td>
-                      <td className="text-sm">{format(new Date(p.fecha), "d MMM yyyy", { locale: es })}</td>
+                      <td className="text-sm">{format(new Date(p.fecha || p.created_at), "d MMM yyyy", { locale: es })}</td>
                       <td className="font-semibold">{fmt(p.total)}</td>
                       <td className="text-sm">{fmt(p.total_pagado)}</td>
                       <td><span className={`badge badge-${p.estado === 'completado' ? 'success' : p.estado === 'aprobado' ? 'info' : p.estado === 'vencido' ? 'danger' : 'warning'}`}>{p.estado}</span></td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openPresupuestoDetalle(p)}>Ver →</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -964,7 +1075,7 @@ export default function PacienteDetailPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label">Posología</label>
-                      <input className="form-input" value={med.posologa} onChange={e => setRecetaMed(idx, 'posologa', e.target.value)} placeholder="Cada 8 horas" />
+                      <input className="form-input" value={med.posologia} onChange={e => setRecetaMed(idx, 'posologia', e.target.value)} placeholder="Cada 8 horas" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Cantidad / Días</label>
@@ -989,6 +1100,107 @@ export default function PacienteDetailPage() {
               <button type="button" className="btn btn-ghost" onClick={() => setModalReceta(false)}>Cerrar</button>
               <button type="button" className="btn btn-primary" onClick={printReceta}>Imprimir receta</button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL: Nuevo/Editar presupuesto */}
+      {modalPresupuesto && (
+        <div className="modal-overlay" onClick={() => setModalPresupuesto(false)}>
+          <div className="modal modal-lg presupuesto-print" onClick={e => e.stopPropagation()} style={{ maxHeight: '95vh' }}>
+            <div className="modal-header">
+              <span className="modal-title">{presupuestoDetalle ? `Presupuesto #${presupuestoDetalle.numero}` : 'Nuevo Presupuesto'}</span>
+              <button className="btn-close" onClick={() => setModalPresupuesto(false)}>✕</button>
+            </div>
+            <form onSubmit={handlePresupuestoSave}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Header imprimible */}
+                <div style={{ borderBottom: '2px solid var(--c-border)', paddingBottom: 14, marginBottom: 4 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700 }}>{configuracion?.nombre_consultorio || configuracion?.nombre_profesional || 'Consultorio'}</div>
+                  {configuracion?.nombre_profesional && <div className="text-sm">Prof.: {configuracion.nombre_profesional}{configuracion.matricula ? ` — Mat. ${configuracion.matricula}` : ''}</div>}
+                  <div className="text-sm">Paciente: <strong>{paciente.apellido}, {paciente.nombre}</strong>{paciente.dni ? ` — DNI ${paciente.dni}` : ''}</div>
+                  <div className="text-sm text-muted">Fecha: {format(new Date(), "d 'de' MMMM yyyy", { locale: es })}</div>
+                </div>
+
+                {/* Ítems */}
+                <div>
+                  <div style={{ marginBottom: 10, fontWeight: 700, fontSize: '.85rem', color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Ítems del presupuesto</div>
+                  {presupuestoItems.map((item, idx) => (
+                    <div key={idx} style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                        <span className="text-sm" style={{ fontWeight: 600 }}>Ítem {idx + 1}</span>
+                        {presupuestoItems.length > 1 && <button type="button" className="btn btn-danger btn-sm" onClick={() => removePresupuestoItem(idx)}>Eliminar</button>}
+                      </div>
+                      <div className="form-row cols-2" style={{ marginBottom: 8 }}>
+                        <div className="form-group">
+                          <label className="form-label">Prestación</label>
+                          <select className="form-input" value={item.prestacion_id} onChange={e => {
+                            const p = prestaciones.find(x => x.id === e.target.value)
+                            setPresupuestoItem(idx, 'prestacion_id', e.target.value)
+                            if (p) {
+                              setPresupuestoItem(idx, 'descripcion', p.nombre)
+                              setPresupuestoItem(idx, 'precio_unitario', String(p.precio ?? 0))
+                            }
+                          }}>
+                            <option value="">Sin prestación</option>
+                            {prestaciones.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Descripción <span className="req">*</span></label>
+                          <input className="form-input" value={item.descripcion} onChange={e => setPresupuestoItem(idx, 'descripcion', e.target.value)} placeholder="Descripción del ítem..." required={idx === 0} />
+                        </div>
+                      </div>
+                      <div className="form-row cols-2">
+                        <div className="form-group">
+                          <label className="form-label">Cantidad</label>
+                          <input className="form-input" type="number" min="1" value={item.cantidad} onChange={e => setPresupuestoItem(idx, 'cantidad', e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Precio unitario</label>
+                          <input className="form-input" type="number" min="0" value={item.precio_unitario} onChange={e => setPresupuestoItem(idx, 'precio_unitario', e.target.value)} placeholder="$0" />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', marginTop: 6, fontSize: '.82rem', color: 'var(--c-text-2)' }}>
+                        Subtotal: <strong>{fmt((Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0))}</strong>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={addPresupuestoItem}>+ Agregar ítem</button>
+                </div>
+
+                <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, fontSize: '.9rem' }}>TOTAL</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 700, color: 'var(--c-success)' }}>{fmt(presupuestoTotal)}</span>
+                </div>
+
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label className="form-label">Notas</label>
+                    <textarea className="form-input" rows={2} value={presupuestoForm.notas} onChange={e => setPresupuestoForm(f => ({ ...f, notas: e.target.value }))} placeholder="Condiciones, aclaraciones..." />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Fecha de vencimiento</label>
+                    <input className="form-input" type="date" value={presupuestoForm.fecha_vencimiento} onChange={e => setPresupuestoForm(f => ({ ...f, fecha_vencimiento: e.target.value }))} />
+                  </div>
+                </div>
+
+                {/* Firma imprimible */}
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ borderTop: '1px solid var(--c-text)', width: 180, paddingTop: 6, fontSize: '.78rem' }}>Firma del paciente</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ borderTop: '1px solid var(--c-text)', width: 180, paddingTop: 6, fontSize: '.78rem' }}>Firma del profesional</div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setModalPresupuesto(false); window.print() }}>Imprimir Presupuesto</button>
+                <div style={{ flex: 1 }} />
+                <button type="button" className="btn btn-ghost" onClick={() => setModalPresupuesto(false)}>Cerrar</button>
+                <button type="submit" className="btn btn-primary" disabled={presupuestoSaving}>{presupuestoSaving ? 'Guardando...' : presupuestoDetalle ? 'Guardar cambios' : 'Crear presupuesto'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

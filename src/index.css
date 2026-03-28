@@ -385,6 +385,10 @@ input, select, textarea { font-family: inherit; }
 .pieza-btn.extraido .tooth-body { fill: #F3F4F6; stroke: #9CA3AF; }
 .pieza-btn.implante .tooth-body { fill: #CFFAFE; stroke: var(--o-implante); }
 .pieza-btn.a_tratar .tooth-body { fill: #FEF9C3; stroke: #CA8A04; }
+.pieza-btn.fractura .tooth-body { fill: #FEE2E2; stroke: var(--o-fractura); }
+.pieza-btn.ausente_congenito .tooth-body { fill: #E5E7EB; stroke: #6B7280; }
+.pieza-btn.protesis_fija .tooth-body { fill: #FEF3C7; stroke: #D97706; }
+.pieza-btn.protesis_removible .tooth-body { fill: #FFFBEB; stroke: #B45309; }
 .pieza-estado-dot {
   width: 7px; height: 7px; border-radius: 50%;
 }

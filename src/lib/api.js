@@ -89,6 +89,7 @@ export const api = {
       return request('GET', `/pagos?${params}`)
     },
     create: (body) => request('POST', '/pagos', body),
+    anular: (id) => request('DELETE', `/pagos/${id}`),
   },
 
   // Odontograma

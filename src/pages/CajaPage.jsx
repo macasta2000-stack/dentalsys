@@ -20,6 +20,8 @@ export default function CajaPage() {
   const [deudores, setDeudores] = useState([])
   const [filtroOS, setFiltroOS] = useState('')
   const [tabCaja, setTabCaja] = useState('movimientos') // 'movimientos' | 'deudores'
+  const [rangoDesde, setRangoDesde] = useState('')
+  const [rangoHasta, setRangoHasta] = useState('')
 
   const rangeParams = () => {
     const now = new Date()
@@ -29,10 +31,13 @@ export default function CajaPage() {
       const prev = subMonths(now, 1)
       return { from: startOfMonth(prev).toISOString(), to: endOfMonth(prev).toISOString() }
     }
+    if (range === 'custom' && rangoDesde && rangoHasta) {
+      return { from: startOfDay(new Date(rangoDesde)).toISOString(), to: endOfDay(new Date(rangoHasta)).toISOString() }
+    }
     return {}
   }
 
-  useEffect(() => { loadPagos() }, [range])
+  useEffect(() => { loadPagos() }, [range, rangoDesde, rangoHasta])
   useEffect(() => { loadMonthly(); loadDeudores() }, [])
 
   async function loadPagos() {
@@ -90,6 +95,14 @@ export default function CajaPage() {
     window.print()
   }
 
+  async function handleAnularPago(pago) {
+    if (!confirm(`¿Anular el pago de ${fmt(pago.monto)} de ${pago.paciente_nombre || 'este paciente'}? Esta acción revertirá el saldo del paciente.`)) return
+    try {
+      await api.pagos.anular(pago.id)
+      await loadPagos()
+    } catch (e) { alert(e.message || 'Error al anular pago') }
+  }
+
   return (
     <div>
       {/* CSS para impresión del cierre de caja */}
@@ -105,12 +118,19 @@ export default function CajaPage() {
 
       <div className="page-header no-print">
         <div className="page-title">Caja</div>
-        <div className="page-actions">
-          {['hoy', 'mes', 'mes_ant'].map(r => (
+        <div className="page-actions" style={{ flexWrap: 'wrap' }}>
+          {['hoy', 'mes', 'mes_ant', 'custom'].map(r => (
             <button key={r} className={`btn btn-sm ${range === r ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(r)}>
-              {r === 'hoy' ? 'Hoy' : r === 'mes' ? 'Este mes' : 'Mes anterior'}
+              {r === 'hoy' ? 'Hoy' : r === 'mes' ? 'Este mes' : r === 'mes_ant' ? 'Mes anterior' : 'Rango personalizado'}
             </button>
           ))}
+          {range === 'custom' && (
+            <>
+              <input type="date" className="form-input" style={{ width: 150, padding: '5px 10px', fontSize: '.82rem' }} value={rangoDesde} onChange={e => setRangoDesde(e.target.value)} />
+              <span className="text-sm text-muted">hasta</span>
+              <input type="date" className="form-input" style={{ width: 150, padding: '5px 10px', fontSize: '.82rem' }} value={rangoHasta} onChange={e => setRangoHasta(e.target.value)} />
+            </>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={handleCierreDeCaja}>Cierre de caja</button>
         </div>
       </div>
@@ -125,7 +145,7 @@ export default function CajaPage() {
       {/* Totales resumen */}
       <div className="stats-grid no-print" style={{ marginBottom: 20 }}>
         <div className="stat-card">
-          <div className="stat-label">Total {range === 'hoy' ? 'hoy' : range === 'mes' ? 'este mes' : 'mes anterior'}</div>
+          <div className="stat-label">Total {range === 'hoy' ? 'hoy' : range === 'mes' ? 'este mes' : range === 'mes_ant' ? 'mes anterior' : 'período'}</div>
           <div className="stat-value success">{loading ? '—' : fmt(total)}</div>
           <div className="stat-sub">{pagosFiltrados.length} cobros</div>
         </div>
@@ -228,6 +248,7 @@ export default function CajaPage() {
                     <th style={{ textAlign: 'right' }}>OS</th>
                     <th style={{ textAlign: 'right' }}>Copago</th>
                     <th style={{ textAlign: 'right' }}>Total</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,16 +257,22 @@ export default function CajaPage() {
                     const montoOS = esOS ? Number(p.monto_os ?? p.monto) : 0
                     const montoCopago = esOS ? Number(p.monto_copago ?? 0) : 0
                     const montoParticular = !esOS ? Number(p.monto) : 0
+                    const anulado = !!p.anulado
                     return (
-                      <tr key={p.id}>
+                      <tr key={p.id} style={anulado ? { opacity: 0.5, textDecoration: 'line-through' } : {}}>
                         <td className="text-sm text-muted">{format(new Date(p.fecha), 'HH:mm')}</td>
                         <td className="td-main">{p.paciente_nombre ?? '—'}</td>
-                        <td className="text-sm">{p.concepto || '—'}</td>
+                        <td className="text-sm">{p.concepto || '—'}{anulado && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Anulado</span>}</td>
                         <td><span className="badge badge-neutral">{METODO_LABEL[p.metodo_pago] ?? p.metodo_pago}</span></td>
                         <td style={{ textAlign: 'right' }} className="text-sm">{montoParticular > 0 ? fmt(montoParticular) : '—'}</td>
                         <td style={{ textAlign: 'right' }} className="text-sm">{montoOS > 0 ? fmt(montoOS) : '—'}</td>
                         <td style={{ textAlign: 'right' }} className="text-sm">{montoCopago > 0 ? fmt(montoCopago) : '—'}</td>
                         <td style={{ textAlign: 'right' }} className="font-semibold">{fmt(p.monto)}</td>
+                        <td>
+                          {!anulado && (
+                            <button className="btn btn-danger btn-sm" onClick={() => handleAnularPago(p)}>Anular</button>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}
@@ -257,6 +284,7 @@ export default function CajaPage() {
                     <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalOS)}</td>
                     <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalCopago)}</td>
                     <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--c-success)' }}>{fmt(total)}</td>
+                    <td></td>
                   </tr>
                 </tfoot>
               </table>

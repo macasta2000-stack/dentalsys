@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 
@@ -13,6 +13,7 @@ export default function PacientesPage() {
   const [pacientes, setPacientes] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const searchTimerRef = useRef(null)
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -30,8 +31,8 @@ export default function PacientesPage() {
   function handleSearch(e) {
     const q = e.target.value
     setSearch(q)
-    clearTimeout(window._searchTimer)
-    window._searchTimer = setTimeout(() => load(q), 300)
+    clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => load(q), 300)
   }
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
@@ -113,7 +114,7 @@ export default function PacientesPage() {
                       </div>
                     </td>
                     <td className="text-sm text-muted">{p.dni || '—'}</td>
-                    <td className="text-sm">{calcEdad(p.fecha_nacimiento) != null ? `${calcEdad(p.fecha_nacimiento)} años` : '—'}</td>
+                    <td className="text-sm">{(() => { const e = calcEdad(p.fecha_nacimiento); return e != null ? `${e} años` : '—' })()}</td>
                     <td className="text-sm">{p.telefono || '—'}</td>
                     <td>{p.obra_social ? <span className="badge badge-info">{p.obra_social}</span> : <span className="text-muted text-sm">Particular</span>}</td>
                     <td onClick={e => e.stopPropagation()}>

@@ -198,8 +198,9 @@ export default function InsumosPage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Cantidad <span className="req">*</span></label>
-                  <input className="form-input" type="number" min="0" required value={movForm.cantidad} onChange={e => setMovForm(f => ({ ...f, cantidad: e.target.value }))} />
+                  <label className="form-label">{movForm.tipo === 'ajuste' ? 'Nueva cantidad en stock' : 'Cantidad'} <span className="req">*</span></label>
+                  <input className="form-input" type="number" min="0" required value={movForm.cantidad} onChange={e => setMovForm(f => ({ ...f, cantidad: e.target.value }))} placeholder={movForm.tipo === 'ajuste' ? 'Ingresá el nuevo stock total...' : ''} />
+                  {movForm.tipo === 'ajuste' && <span className="form-hint">El stock quedará exactamente en este valor</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Motivo</label>

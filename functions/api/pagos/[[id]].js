@@ -1,5 +1,5 @@
 import { ok, created, err, notFound, cors } from '../../_lib/response.js'
-import { findOne, insert, newId, pick } from '../../_lib/db.js'
+import { findOne, insert, update, newId, pick } from '../../_lib/db.js'
 
 export async function onRequestOptions() { return cors() }
 
@@ -63,4 +63,25 @@ export async function onRequestPost({ request, data, env }) {
   ).bind(Number(monto), paciente_id, user.sub).run()
 
   return created(pago)
+}
+
+export async function onRequestDelete({ data, env, params }) {
+  const { user } = data
+  const id = params?.id?.[0]
+  if (!id) return err('ID requerido')
+
+  const pago = await findOne(env.DB, 'pagos', { where: { id, tenant_id: user.sub } })
+  if (!pago) return notFound('Pago')
+
+  // Marcar como anulado
+  await env.DB.prepare(
+    `UPDATE pagos SET anulado = 1, updated_at = datetime('now') WHERE id = ?1 AND tenant_id = ?2`
+  ).bind(id, user.sub).run()
+
+  // Revertir el saldo del paciente
+  await env.DB.prepare(
+    `UPDATE pacientes SET saldo = saldo - ?1, updated_at = datetime('now') WHERE id = ?2 AND tenant_id = ?3`
+  ).bind(Number(pago.monto), pago.paciente_id, user.sub).run()
+
+  return ok({ mensaje: 'Pago anulado' })
 }

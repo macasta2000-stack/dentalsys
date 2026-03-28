@@ -4,6 +4,8 @@ import { api } from '../lib/api'
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 
+const METODO_LABEL = { efectivo:'Efectivo', transferencia:'Transferencia', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', obra_social:'Obra Social', mercadopago:'MercadoPago', cheque:'Cheque', otro:'Otro' }
+
 function fmt(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n ?? 0)
 }
@@ -14,6 +16,13 @@ export default function DashboardPage() {
   const [turnosHoy, setTurnosHoy] = useState([])
   const [stats, setStats] = useState({ facturacion: 0, pacientesNuevos: 0, ausentes: 0 })
   const [loading, setLoading] = useState(true)
+
+  // Modal cobro dashboard
+  const [modalCobro, setModalCobro] = useState(false)
+  const [turnoACobrar, setTurnoACobrar] = useState(null)
+  const [cobroForm, setCobroForm] = useState({ monto: '', metodo_pago: 'efectivo', concepto: '', monto_os: 0, monto_copago: 0 })
+  const [cobroSaving, setCobroSaving] = useState(false)
+  const [cobroError, setCobroError] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -39,8 +48,53 @@ export default function DashboardPage() {
     load()
   }, [])
 
-  const estadoColor = { programado: 'info', confirmado: 'info', presente: 'success', completado: 'neutral', ausente: 'danger', cancelado: 'neutral' }
-  const estadoLabel = { programado: 'Programado', confirmado: 'Confirmado', presente: 'Presente', completado: 'Completado', ausente: 'Ausente', cancelado: 'Cancelado' }
+  const estadoColor = { programado: 'info', confirmado: 'info', presente: 'success', completado: 'neutral', ausente: 'danger', no_asistio: 'warning', cancelado: 'neutral' }
+  const estadoLabel = { programado: 'Programado', confirmado: 'Confirmado', presente: 'Presente', completado: 'Completado', ausente: 'Ausente', no_asistio: 'No asistió', cancelado: 'Cancelado' }
+
+  async function loadTurnosHoy() {
+    const turnos = await api.turnos.list({
+      from: startOfDay(today).toISOString(),
+      to: endOfDay(today).toISOString(),
+    }).catch(() => [])
+    setTurnosHoy(turnos ?? [])
+  }
+
+  async function cambiarEstadoTurno(turno, nuevoEstado) {
+    try {
+      await api.turnos.update(turno.id, { estado: nuevoEstado })
+      if (nuevoEstado === 'completado') {
+        // abrir modal de cobro
+        setTurnoACobrar(turno)
+        setCobroForm({ monto: '', metodo_pago: 'efectivo', concepto: turno.motivo || 'Consulta', monto_os: 0, monto_copago: 0 })
+        setCobroError('')
+        setModalCobro(true)
+      }
+      await loadTurnosHoy()
+    } catch (e) { alert(e.message) }
+  }
+
+  async function handleCobro(e) {
+    e.preventDefault()
+    if (!cobroForm.monto || Number(cobroForm.monto) <= 0) { setCobroError('Ingresá un monto válido'); return }
+    setCobroSaving(true); setCobroError('')
+    try {
+      const pagoData = {
+        paciente_id: turnoACobrar.paciente_id,
+        monto: Number(cobroForm.monto),
+        metodo_pago: cobroForm.metodo_pago,
+        concepto: cobroForm.concepto || 'Consulta',
+        turno_id: turnoACobrar.id,
+      }
+      if (cobroForm.metodo_pago === 'obra_social') {
+        pagoData.monto_os = Number(cobroForm.monto_os) || 0
+        pagoData.monto_copago = Number(cobroForm.monto_copago) || 0
+      }
+      await api.pagos.create(pagoData)
+      setModalCobro(false)
+      setTurnoACobrar(null)
+    } catch (e) { setCobroError(e.message) }
+    finally { setCobroSaving(false) }
+  }
 
   return (
     <div>
@@ -114,10 +168,22 @@ export default function DashboardPage() {
                     <td>{t.paciente_nombre}</td>
                     <td><span className="text-sm text-muted">{t.paciente_obra_social || 'Particular'}</span></td>
                     <td className="text-sm">{t.motivo || '—'}</td>
-                    <td><span className={`badge badge-${estadoColor[t.estado] ?? 'neutral'}`}>{estadoLabel[t.estado]}</span></td>
+                    <td><span className={`badge badge-${estadoColor[t.estado] ?? 'neutral'}`}>{estadoLabel[t.estado] ?? t.estado}</span></td>
                     <td>
-                      <button className="btn btn-ghost btn-sm"
-                        onClick={() => navigate(`/pacientes/${t.paciente_id}`)}>Ver ficha</button>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {t.estado === 'programado' && <>
+                          <button className="btn btn-success btn-sm" onClick={() => cambiarEstadoTurno(t, 'confirmado')}>Confirmar</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => { if (confirm('¿Cancelar este turno?')) cambiarEstadoTurno(t, 'cancelado') }}>Cancelar</button>
+                        </>}
+                        {t.estado === 'confirmado' && <>
+                          <button className="btn btn-success btn-sm" onClick={() => cambiarEstadoTurno(t, 'completado')}>Presente ✓</button>
+                          <button className="btn btn-sm" style={{ background: 'var(--c-warning-bg)', color: 'var(--c-warning)', border: '1px solid #FCD34D' }} onClick={() => cambiarEstadoTurno(t, 'no_asistio')}>No asistió</button>
+                        </>}
+                        {t.estado === 'completado' && <span className="badge badge-neutral">Cobrado ✓</span>}
+                        {t.estado === 'cancelado' && <span className="badge badge-danger">Cancelado</span>}
+                        {t.estado === 'no_asistio' && <span className="badge badge-warning">No asistió</span>}
+                        <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/pacientes/${t.paciente_id}`)}>Ver ficha</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -126,6 +192,71 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      {/* Modal cobro desde dashboard */}
+      {modalCobro && turnoACobrar && (
+        <div className="modal-overlay" onClick={() => setModalCobro(false)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Cobrar turno</span>
+              <button className="btn-close" onClick={() => setModalCobro(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCobro}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="alert alert-info" style={{ fontSize: '.82rem' }}>
+                  Paciente: <strong>{turnoACobrar.paciente_nombre}</strong>
+                  {turnoACobrar.motivo && <> — {turnoACobrar.motivo}</>}
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label className="form-label">Monto total <span className="req">*</span></label>
+                    <input className="form-input" type="number" min="0" required value={cobroForm.monto}
+                      onChange={e => setCobroForm(f => ({ ...f, monto: e.target.value }))} placeholder="$0" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Método de pago</label>
+                    <select className="form-input" value={cobroForm.metodo_pago}
+                      onChange={e => setCobroForm(f => ({ ...f, metodo_pago: e.target.value }))}>
+                      <option value="efectivo">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="tarjeta_debito">Débito</option>
+                      <option value="tarjeta_credito">Crédito</option>
+                      <option value="obra_social">Obra Social</option>
+                      <option value="mercadopago">MercadoPago</option>
+                      <option value="cheque">Cheque</option>
+                    </select>
+                  </div>
+                </div>
+                {cobroForm.metodo_pago === 'obra_social' && (
+                  <div className="form-row cols-2">
+                    <div className="form-group">
+                      <label className="form-label">Monto Obra Social</label>
+                      <input className="form-input" type="number" min="0" value={cobroForm.monto_os}
+                        onChange={e => setCobroForm(f => ({ ...f, monto_os: e.target.value }))} placeholder="$0" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Copago del paciente</label>
+                      <input className="form-input" type="number" min="0" value={cobroForm.monto_copago}
+                        onChange={e => setCobroForm(f => ({ ...f, monto_copago: e.target.value }))} placeholder="$0" />
+                    </div>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Concepto</label>
+                  <input className="form-input" value={cobroForm.concepto}
+                    onChange={e => setCobroForm(f => ({ ...f, concepto: e.target.value }))} placeholder="Descripción del cobro" />
+                </div>
+                {cobroError && <div className="alert alert-danger">{cobroError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalCobro(false)}>Omitir por ahora</button>
+                <button type="submit" className="btn btn-success" disabled={cobroSaving}>
+                  {cobroSaving ? 'Registrando...' : 'Registrar cobro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

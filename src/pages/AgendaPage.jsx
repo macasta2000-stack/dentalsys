@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -29,6 +29,10 @@ export default function AgendaPage() {
   const [modal, setModal] = useState(false)
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState({ paciente_id: '', fecha_hora: '', duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '' })
+  const [pacienteSearch, setPacienteSearch] = useState('')
+  const [pacienteSelNombre, setPacienteSelNombre] = useState('')
+  const [showPacienteSugerencias, setShowPacienteSugerencias] = useState(false)
+  const pacienteSearchRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -77,6 +81,9 @@ export default function AgendaPage() {
     dt.setHours(hour, 0, 0, 0)
     setSelected(null)
     setForm({ paciente_id: '', fecha_hora: format(dt, "yyyy-MM-dd'T'HH:mm"), duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '' })
+    setPacienteSearch('')
+    setPacienteSelNombre('')
+    setShowPacienteSugerencias(false)
     setError('')
     setModal(true)
   }
@@ -97,6 +104,9 @@ export default function AgendaPage() {
       estado: t.estado,
       notas: t.notas ?? '',
     })
+    setPacienteSearch('')
+    setPacienteSelNombre(t.paciente_nombre ?? '')
+    setShowPacienteSugerencias(false)
     setError('')
     setModal(true)
   }
@@ -284,12 +294,64 @@ export default function AgendaPage() {
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label className="form-label">Paciente <span className="req">*</span></label>
-                  <select className="form-input" required value={form.paciente_id} onChange={set('paciente_id')}>
-                    <option value="">Seleccioná un paciente...</option>
-                    {pacientes.map(p => <option key={p.id} value={p.id}>{p.apellido}, {p.nombre}</option>)}
-                  </select>
+                  {form.paciente_id && pacienteSelNombre ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', border: '1.5px solid var(--c-primary)', borderRadius: 'var(--radius-sm)', background: 'var(--c-primary-light)' }}>
+                      <span style={{ flex: 1, fontSize: '.88rem', fontWeight: 600, color: 'var(--c-primary-dark)' }}>{pacienteSelNombre}</span>
+                      <button type="button" className="btn-close" style={{ fontSize: '1rem', color: 'var(--c-primary)' }} onClick={() => {
+                        setForm(f => ({ ...f, paciente_id: '' }))
+                        setPacienteSelNombre('')
+                        setPacienteSearch('')
+                        setTimeout(() => pacienteSearchRef.current?.focus(), 50)
+                      }}>✕</button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        ref={pacienteSearchRef}
+                        className="form-input"
+                        type="text"
+                        placeholder="Buscar paciente por nombre o DNI..."
+                        value={pacienteSearch}
+                        onChange={e => { setPacienteSearch(e.target.value); setShowPacienteSugerencias(true) }}
+                        onFocus={() => pacienteSearch && setShowPacienteSugerencias(true)}
+                        onBlur={() => setTimeout(() => setShowPacienteSugerencias(false), 150)}
+                        autoComplete="off"
+                      />
+                      {showPacienteSugerencias && pacienteSearch && (() => {
+                        const q = pacienteSearch.toLowerCase()
+                        const filtrados = pacientes.filter(p =>
+                          p.nombre.toLowerCase().includes(q) ||
+                          p.apellido.toLowerCase().includes(q) ||
+                          (p.dni ?? '').toLowerCase().includes(q)
+                        ).slice(0, 8)
+                        if (!filtrados.length) return null
+                        return (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--c-surface)', border: '1.5px solid var(--c-border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)', maxHeight: 220, overflowY: 'auto' }}>
+                            {filtrados.map(p => (
+                              <div key={p.id}
+                                style={{ padding: '9px 14px', cursor: 'pointer', borderBottom: '1px solid var(--c-border)', fontSize: '.86rem' }}
+                                onMouseDown={() => {
+                                  setForm(f => ({ ...f, paciente_id: p.id }))
+                                  setPacienteSelNombre(`${p.apellido}, ${p.nombre}`)
+                                  setPacienteSearch('')
+                                  setShowPacienteSugerencias(false)
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--c-surface-2)'}
+                                onMouseLeave={e => e.currentTarget.style.background = ''}
+                              >
+                                <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{p.apellido}, {p.nombre}</span>
+                                {p.dni && <span style={{ marginLeft: 8, fontSize: '.78rem', color: 'var(--c-text-3)' }}>DNI {p.dni}</span>}
+                                {p.obra_social && <span style={{ marginLeft: 8, fontSize: '.75rem', color: 'var(--c-primary)' }}>{p.obra_social}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                  {!form.paciente_id && <input type="text" required value="" onChange={() => {}} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }} tabIndex={-1} />}
                 </div>
                 <div className="form-row cols-2">
                   <div className="form-group">
