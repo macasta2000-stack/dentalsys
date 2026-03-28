@@ -132,4 +132,19 @@ export const api = {
     get: () => request('GET', '/config'),
     update: (body) => request('PATCH', '/config', body),
   },
+
+  // Convenios (obras sociales)
+  convenios: {
+    list: (nombre_os) => request('GET', `/convenios${nombre_os ? `?nombre_os=${encodeURIComponent(nombre_os)}` : ''}`),
+    get: (id) => request('GET', `/convenios/${id}`),
+    create: (body) => request('POST', '/convenios', body),
+    update: (id, body) => request('PATCH', `/convenios/${id}`, body),
+    delete: (id) => request('DELETE', `/convenios/${id}`),
+  },
+
+  // Anamnesis
+  anamnesis: {
+    get: (pacienteId) => request('GET', `/anamnesis?paciente_id=${pacienteId}`),
+    save: (body) => request('POST', '/anamnesis', body),
+  },
 }

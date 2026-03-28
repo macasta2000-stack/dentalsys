@@ -2,15 +2,16 @@
 
 // Whitelist: solo estos campos se permiten en inserts/updates por tabla
 const ALLOWED_FIELDS = {
-  pacientes: ['nombre','apellido','dni','fecha_nacimiento','telefono','email','direccion','ciudad','obra_social','plan_obra_social','notas','estado'],
+  pacientes: ['nombre','apellido','dni','fecha_nacimiento','sexo','telefono','telefono_alternativo','email','direccion','ciudad','obra_social','numero_afiliado','plan_obra_social','alergias','medicacion_actual','antecedentes_medicos','antecedentes_odontologicos','notas','estado'],
   turnos: ['paciente_id','fecha_hora','duracion_minutos','motivo','prestacion_id','estado','notas'],
-  pagos: ['paciente_id','monto','metodo_pago','concepto','fecha'],
-  prestaciones: ['nombre','codigo','precio','duracion_minutos','categoria','activo'],
+  pagos: ['paciente_id','monto','metodo_pago','concepto','fecha','monto_os','monto_copago','turno_id'],
+  prestaciones: ['nombre','codigo','precio','duracion_minutos','categoria','activo','descripcion'],
   insumos: ['nombre','descripcion','unidad','stock_actual','stock_minimo','precio_unitario','proveedor','categoria','activo'],
   evoluciones: ['paciente_id','descripcion','fecha','piezas_tratadas','prestacion_id','prestacion_nombre','monto'],
   odontograma: ['paciente_id','numero_pieza','estado','caras_afectadas','notas'],
   presupuestos: ['paciente_id','numero','total','estado','notas','fecha_vencimiento','total_pagado'],
   configuracion: ['nombre_consultorio','nombre_profesional','matricula','especialidad','telefono','email','direccion','ciudad','cuit','duracion_turno_default','horario_inicio','horario_fin','logo_url'],
+  convenios: ['nombre_os','prestacion_id','monto_os','monto_copago','activo'],
 }
 
 // Tablas que tienen columna updated_at

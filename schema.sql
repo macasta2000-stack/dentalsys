@@ -242,6 +242,42 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- ============================================================
+-- CONVENIOS (obras sociales)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS convenios (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES usuarios(id),
+  nombre_os TEXT NOT NULL,
+  prestacion_id TEXT REFERENCES prestaciones(id),
+  monto_os REAL DEFAULT 0,
+  monto_copago REAL DEFAULT 0,
+  activo INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================
+-- ANAMNESIS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS anamnesis (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES usuarios(id),
+  paciente_id TEXT NOT NULL REFERENCES pacientes(id),
+  motivo_consulta TEXT,
+  enfermedades TEXT DEFAULT '{}',
+  medicacion TEXT DEFAULT '[]',
+  alergias TEXT,
+  embarazada INTEGER DEFAULT 0,
+  fumador INTEGER DEFAULT 0,
+  anticoagulantes INTEGER DEFAULT 0,
+  ultima_visita_medico TEXT,
+  cirugias_previas TEXT,
+  antecedentes_odontologicos TEXT,
+  firma_fecha TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================
 -- ÍNDICES
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_pacientes_tenant ON pacientes(tenant_id, estado);

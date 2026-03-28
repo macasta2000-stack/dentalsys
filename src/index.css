@@ -540,3 +540,25 @@ input, select, textarea { font-family: inherit; }
 .font-semibold { font-weight: 600; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .divider { height: 1px; background: var(--c-border); margin: 16px 0; }
+
+/* ========================================================
+   PRINT
+   ======================================================== */
+@media print {
+  .no-print { display: none !important; }
+  .sidebar, .topbar { display: none !important; }
+  .main { margin-left: 0 !important; }
+  .page-content { padding: 0 !important; }
+  body { background: white; }
+  .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+}
+
+/* ========================================================
+   TURNO CHIP ESTADOS (color por estado)
+   ======================================================== */
+.turno-chip.confirmado { background: #F0FDF4; border-color: #16A34A; }
+.turno-chip.confirmado .tc-name { color: #15803D; }
+.turno-chip.programado { background: #EFF6FF; border-color: #3B82F6; }
+.turno-chip.programado .tc-name { color: #1D4ED8; }
+.turno-chip.cancelado { background: #FEF2F2; border-color: #DC2626; }
+.turno-chip.cancelado .tc-name { color: #B91C1C; }

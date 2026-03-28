@@ -20,7 +20,8 @@ export async function onRequestGet({ request, data, env, params }) {
 
   let sql = `
     SELECT t.*, p.nombre || ' ' || p.apellido as paciente_nombre,
-           p.telefono as paciente_telefono, p.obra_social as paciente_obra_social
+           p.telefono as paciente_telefono, p.obra_social as paciente_obra_social,
+           p.saldo as paciente_saldo
     FROM turnos t
     LEFT JOIN pacientes p ON p.id = t.paciente_id
     WHERE t.tenant_id = ?1 AND t.estado != 'cancelado'

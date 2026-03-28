@@ -19,7 +19,8 @@ export async function onRequestGet({ request, data, env, params }) {
   const pacienteId = url.searchParams.get('paciente_id')
 
   let sql = `
-    SELECT pg.*, p.nombre || ' ' || p.apellido as paciente_nombre
+    SELECT pg.*, p.nombre || ' ' || p.apellido as paciente_nombre,
+           p.obra_social as paciente_obra_social
     FROM pagos pg
     LEFT JOIN pacientes p ON p.id = pg.paciente_id
     WHERE pg.tenant_id = ?1
@@ -42,14 +43,21 @@ export async function onRequestPost({ request, data, env }) {
   const { paciente_id, monto, metodo_pago } = body
   if (!paciente_id || !monto || !metodo_pago) return err('Paciente, monto y método de pago son requeridos')
 
-  const pago = await insert(env.DB, 'pagos', {
+  const pagoData = {
     id: newId(),
     tenant_id: user.sub,
     ...pick('pagos', body),
     monto: Number(monto),
-  })
+  }
 
-  // Actualizar saldo del paciente
+  // Calcular monto_os y monto_copago si viene en el body
+  if (body.monto_os !== undefined) pagoData.monto_os = Number(body.monto_os) || 0
+  if (body.monto_copago !== undefined) pagoData.monto_copago = Number(body.monto_copago) || 0
+  if (body.turno_id) pagoData.turno_id = body.turno_id
+
+  const pago = await insert(env.DB, 'pagos', pagoData)
+
+  // Actualizar saldo del paciente (suma el monto recibido)
   await env.DB.prepare(
     `UPDATE pacientes SET saldo = saldo + ?1, updated_at = datetime('now') WHERE id = ?2 AND tenant_id = ?3`
   ).bind(Number(monto), paciente_id, user.sub).run()
