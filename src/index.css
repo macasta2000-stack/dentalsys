@@ -566,3 +566,105 @@ input, select, textarea { font-family: inherit; }
 .turno-chip.programado .tc-name { color: #1D4ED8; }
 .turno-chip.cancelado { background: #FEF2F2; border-color: #DC2626; }
 .turno-chip.cancelado .tc-name { color: #B91C1C; }
+
+/* ========================================================
+   MOBILE OPTIMIZATIONS (≤640px)
+   ======================================================== */
+@media (max-width: 640px) {
+  /* Buttons: min touch target */
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 36px; }
+
+  /* Modals: 95% height, internal scroll */
+  .modal {
+    max-height: 95dvh;
+    height: 95dvh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    margin: auto 0 0 0;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Odontogram: horizontal scroll on mobile */
+  .odontograma-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .odontograma-wrapper .od-row {
+    min-width: 580px;
+  }
+  .od-pieza {
+    min-width: 36px;
+    min-height: 36px;
+    font-size: .65rem;
+  }
+
+  /* Patients table → cards on mobile */
+  .table-wrapper table thead { display: none; }
+  .table-wrapper table tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    background: var(--c-surface);
+  }
+  .table-wrapper table tbody td {
+    padding: 2px 0;
+    border: none;
+  }
+  .table-wrapper table tbody td.td-main {
+    font-size: 1rem;
+    font-weight: 700;
+    padding-bottom: 4px;
+  }
+
+  /* Stats grid: 1 column on very small screens */
+  .stats-grid { grid-template-columns: 1fr; }
+
+  /* Page header: stack vertically */
+  .page-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Patient detail header: stack */
+  .pd-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .pd-header > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Topbar: hide non-essential */
+  .topbar-right .topbar-user-name { display: none; }
+
+  /* FAB: positioned for right thumb */
+  .fab-container {
+    bottom: 24px !important;
+    right: 24px !important;
+  }
+
+  /* Tabs: scrollable horizontally */
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+  .tab-btn {
+    white-space: nowrap;
+    min-height: 40px;
+  }
+}

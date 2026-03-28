@@ -47,7 +47,7 @@ export default function PacientesPage() {
       setModal(false); setForm(EMPTY_FORM)
       navigate(`/pacientes/${p.id}`)
     } catch (e) {
-      setError(e.message)
+      setError('No se pudo guardar el paciente. Nombre y apellido son obligatorios.')
     } finally {
       setSaving(false)
     }

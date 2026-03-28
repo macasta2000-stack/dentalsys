@@ -36,6 +36,28 @@ export default function AgendaPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Info OS del paciente seleccionado
+  const [conveniosOS, setConveniosOS] = useState([])
+  const [pacienteSelOS, setPacienteSelOS] = useState('')
+
+  // Menú contextual
+  const [ctxMenu, setCtxMenu] = useState(null) // { x, y, turno }
+  const [modalReagendar, setModalReagendar] = useState(false)
+  const [turnoReagendar, setTurnoReagendar] = useState(null)
+  const [reagendarFecha, setReagendarFecha] = useState('')
+  const [modalAusenteConfirm, setModalAusenteConfirm] = useState(false)
+  const [turnoAusente, setTurnoAusente] = useState(null)
+
+  // Sub-modal crear paciente desde turno
+  const [modalNuevoPac, setModalNuevoPac] = useState(false)
+  const [nuevoPacForm, setNuevoPacForm] = useState({ nombre: '', apellido: '', telefono: '', obra_social: '' })
+  const [nuevoPacSaving, setNuevoPacSaving] = useState(false)
+  const [nuevoPacError, setNuevoPacError] = useState('')
+
+  // Conflicto de horario
+  const [conflicto, setConflicto] = useState(null) // turno conflictivo
+  const [horariosLibres, setHorariosLibres] = useState([]) // próximos 3 horarios libres
+
   // Modal cobro
   const [modalCobro, setModalCobro] = useState(false)
   const [turnoACobrar, setTurnoACobrar] = useState(null)
@@ -126,6 +148,126 @@ export default function AgendaPage() {
     setModalCobro(true)
   }
 
+  async function handleCtxAction(action, turno) {
+    setCtxMenu(null)
+    if (action === 'ver_ficha') {
+      window.location.href = `/pacientes/${turno.paciente_id}`
+      return
+    }
+    if (action === 'completar') {
+      const updated = await api.turnos.update(turno.id, { estado: 'completado' })
+      setTurnos(prev => prev.map(t => t.id === turno.id ? { ...t, ...updated } : t))
+      openCobro({ ...turno, ...updated })
+      return
+    }
+    if (action === 'ausente') {
+      setTurnoAusente(turno)
+      setModalAusenteConfirm(true)
+      return
+    }
+    if (action === 'reagendar') {
+      setTurnoReagendar(turno)
+      setReagendarFecha(format(parseISO(turno.fecha_hora), "yyyy-MM-dd'T'HH:mm"))
+      setModalReagendar(true)
+      return
+    }
+    if (action === 'cancelar') {
+      if (!confirm('¿Cancelar este turno?')) return
+      await api.turnos.cancel(turno.id)
+      setTurnos(prev => prev.filter(t => t.id !== turno.id))
+      return
+    }
+    // cambio de estado directo
+    const updated = await api.turnos.update(turno.id, { estado: action })
+    setTurnos(prev => prev.map(t => t.id === turno.id ? { ...t, ...updated } : t))
+  }
+
+  async function handleAusenteConfirm(reagendar) {
+    setModalAusenteConfirm(false)
+    if (turnoAusente) {
+      await api.turnos.update(turnoAusente.id, { estado: 'ausente' })
+      setTurnos(prev => prev.map(t => t.id === turnoAusente.id ? { ...t, estado: 'ausente' } : t))
+    }
+    if (reagendar && turnoAusente) {
+      setTurnoReagendar(turnoAusente)
+      const nueva = new Date(turnoAusente.fecha_hora)
+      nueva.setDate(nueva.getDate() + 7)
+      setReagendarFecha(format(nueva, "yyyy-MM-dd'T'HH:mm"))
+      setModalReagendar(true)
+    }
+    setTurnoAusente(null)
+  }
+
+  async function handleReagendar(e) {
+    e.preventDefault()
+    if (!reagendarFecha || !turnoReagendar) return
+    const updated = await api.turnos.update(turnoReagendar.id, { fecha_hora: reagendarFecha })
+    setTurnos(prev => prev.map(t => t.id === turnoReagendar.id ? { ...t, ...updated } : t))
+    setModalReagendar(false)
+    setTurnoReagendar(null)
+  }
+
+  async function loadConveniosOS(paciente) {
+    if (!paciente?.obra_social) { setConveniosOS([]); setPacienteSelOS(''); return }
+    setPacienteSelOS(paciente.obra_social)
+    try {
+      const cvs = await api.convenios.list(paciente.obra_social)
+      setConveniosOS(cvs ?? [])
+    } catch { setConveniosOS([]) }
+  }
+
+  async function handleNuevoPaciente(e) {
+    e.preventDefault()
+    if (!nuevoPacForm.nombre || !nuevoPacForm.apellido) { setNuevoPacError('Nombre y apellido son obligatorios'); return }
+    setNuevoPacSaving(true); setNuevoPacError('')
+    try {
+      const p = await api.pacientes.create(nuevoPacForm)
+      setPacientes(prev => [...prev, p])
+      setForm(f => ({ ...f, paciente_id: p.id }))
+      setPacienteSelNombre(`${p.apellido}, ${p.nombre}`)
+      setPacienteSearch('')
+      setShowPacienteSugerencias(false)
+      loadConveniosOS(p)
+      setModalNuevoPac(false)
+      setNuevoPacForm({ nombre: '', apellido: '', telefono: '', obra_social: '' })
+    } catch (err) { setNuevoPacError('No se pudo crear el paciente. Nombre y apellido son obligatorios.') }
+    finally { setNuevoPacSaving(false) }
+  }
+
+  function checkConflicto(fechaHora) {
+    if (!fechaHora) { setConflicto(null); setHorariosLibres([]); return }
+    const dt = new Date(fechaHora)
+    // Buscar turno en ±30 min
+    const conflictivo = turnos.find(t => {
+      if (selected && t.id === selected.id) return false
+      const d = parseISO(t.fecha_hora)
+      const diff = Math.abs(d - dt) / 60000
+      return diff < 30 && t.estado !== 'cancelado'
+    })
+    setConflicto(conflictivo ?? null)
+    if (conflictivo) {
+      // Sugerir próximos 3 horarios libres ese día
+      const base = new Date(dt)
+      const libres = []
+      let candidato = new Date(base)
+      candidato.setMinutes(0, 0, 0)
+      candidato.setHours(candidato.getHours() + 1)
+      while (libres.length < 3) {
+        const hay = turnos.some(t => {
+          if (selected && t.id === selected.id) return false
+          const d = parseISO(t.fecha_hora)
+          return Math.abs(d - candidato) / 60000 < 30 && t.estado !== 'cancelado'
+        })
+        if (!hay) libres.push(new Date(candidato))
+        candidato = new Date(candidato.getTime() + 30 * 60000)
+        if (libres.length >= 3) break
+      }
+      setHorariosLibres(libres)
+    } else {
+      setHorariosLibres([])
+    }
+  }
+
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function handleSave(e) {
@@ -155,7 +297,7 @@ export default function AgendaPage() {
         setTurnos(prev => [...prev, created])
       }
       setModal(false)
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError('No se pudo guardar el turno. Verificá que el paciente esté seleccionado y la fecha/hora sean válidas.') }
     finally { setSaving(false) }
   }
 
@@ -193,7 +335,7 @@ export default function AgendaPage() {
   const gridCols = vista === 'diaria' ? 2 : 8
 
   return (
-    <div>
+    <div onClick={() => ctxMenu && setCtxMenu(null)}>
       <div className="page-header">
         <div>
           <div className="page-title">Agenda</div>
@@ -256,6 +398,7 @@ export default function AgendaPage() {
                               key={t.id}
                               style={{ background: style.bg, borderLeft: `3px solid ${style.border}`, borderRadius: 4, padding: '4px 6px', fontSize: '.72rem', cursor: 'pointer', margin: 1, transition: 'box-shadow .15s', position: 'relative' }}
                               onClick={e => { e.stopPropagation(); openEdit(t) }}
+                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, turno: t }) }}
                             >
                               {tieneDeuda && <span style={{ position: 'absolute', top: 2, right: 3, width: 7, height: 7, borderRadius: '50%', background: '#DC2626' }} title="Paciente con deuda" />}
                               <div style={{ color: style.border, opacity: .7, fontSize: '.68rem' }}>{format(parseISO(t.fecha_hora), 'HH:mm')}</div>
@@ -284,6 +427,71 @@ export default function AgendaPage() {
         ))}
       </div>
 
+      {/* Menú contextual */}
+      {ctxMenu && (
+        <div style={{ position: 'fixed', top: ctxMenu.y, left: ctxMenu.x, zIndex: 9999, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-lg)', minWidth: 180, overflow: 'hidden' }}
+          onClick={e => e.stopPropagation()}>
+          {[
+            ['confirmado', 'Confirmar'],
+            ['presente', 'Presente'],
+            ['completar', 'Completar + Cobrar'],
+            ['ausente', 'Ausente'],
+            ['ver_ficha', 'Ver ficha del paciente'],
+            ['reagendar', 'Reagendar'],
+            ['cancelar', 'Cancelar turno'],
+          ].map(([action, label]) => (
+            <button key={action} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: '.84rem', background: 'none', border: 'none', cursor: 'pointer', borderBottom: '1px solid var(--c-border)', color: action === 'cancelar' ? 'var(--c-danger)' : action === 'completar' ? 'var(--c-success)' : 'var(--c-text)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--c-surface-2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              onClick={() => handleCtxAction(action, ctxMenu.turno)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Modal ausente → ¿Reagendar? */}
+      {modalAusenteConfirm && (
+        <div className="modal-overlay" onClick={() => setModalAusenteConfirm(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Turno marcado como Ausente</span>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '.9rem', margin: 0 }}>¿Querés reagendar este turno para otra fecha?</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => handleAusenteConfirm(false)}>No, solo marcar ausente</button>
+              <button className="btn btn-primary" onClick={() => handleAusenteConfirm(true)}>Sí, reagendar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal reagendar */}
+      {modalReagendar && turnoReagendar && (
+        <div className="modal-overlay" onClick={() => setModalReagendar(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Reagendar turno — {turnoReagendar.paciente_nombre}</span>
+              <button className="btn-close" onClick={() => setModalReagendar(false)}>✕</button>
+            </div>
+            <form onSubmit={handleReagendar}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Nueva fecha y hora</label>
+                  <input className="form-input" type="datetime-local" required value={reagendarFecha} onChange={e => setReagendarFecha(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalReagendar(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Reagendar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal turno */}
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(false)}>
@@ -303,6 +511,8 @@ export default function AgendaPage() {
                         setForm(f => ({ ...f, paciente_id: '' }))
                         setPacienteSelNombre('')
                         setPacienteSearch('')
+                        setConveniosOS([])
+                        setPacienteSelOS('')
                         setTimeout(() => pacienteSearchRef.current?.focus(), 50)
                       }}>✕</button>
                     </div>
@@ -326,10 +536,13 @@ export default function AgendaPage() {
                           p.apellido.toLowerCase().includes(q) ||
                           (p.dni ?? '').toLowerCase().includes(q)
                         ).slice(0, 8)
-                        if (!filtrados.length) return null
                         return (
-                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--c-surface)', border: '1.5px solid var(--c-border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)', maxHeight: 220, overflowY: 'auto' }}>
-                            {filtrados.map(p => (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--c-surface)', border: '1.5px solid var(--c-border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)', maxHeight: 240, overflowY: 'auto' }}>
+                            {filtrados.length === 0 ? (
+                              <div style={{ padding: '10px 14px', fontSize: '.86rem', color: 'var(--c-text-3)' }}>
+                                Sin resultados para "{pacienteSearch}"
+                              </div>
+                            ) : filtrados.map(p => (
                               <div key={p.id}
                                 style={{ padding: '9px 14px', cursor: 'pointer', borderBottom: '1px solid var(--c-border)', fontSize: '.86rem' }}
                                 onMouseDown={() => {
@@ -337,6 +550,7 @@ export default function AgendaPage() {
                                   setPacienteSelNombre(`${p.apellido}, ${p.nombre}`)
                                   setPacienteSearch('')
                                   setShowPacienteSugerencias(false)
+                                  loadConveniosOS(p)
                                 }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'var(--c-surface-2)'}
                                 onMouseLeave={e => e.currentTarget.style.background = ''}
@@ -346,17 +560,55 @@ export default function AgendaPage() {
                                 {p.obra_social && <span style={{ marginLeft: 8, fontSize: '.75rem', color: 'var(--c-primary)' }}>{p.obra_social}</span>}
                               </div>
                             ))}
+                            <div style={{ borderTop: '1px solid var(--c-border)' }}>
+                              <div style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '.84rem', fontWeight: 600, color: 'var(--c-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
+                                onMouseDown={() => {
+                                  setShowPacienteSugerencias(false)
+                                  setNuevoPacForm({ nombre: pacienteSearch, apellido: '', telefono: '', obra_social: '' })
+                                  setNuevoPacError('')
+                                  setModalNuevoPac(true)
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--c-primary-light)'}
+                                onMouseLeave={e => e.currentTarget.style.background = ''}>
+                                + Crear paciente nuevo
+                              </div>
+                            </div>
                           </div>
                         )
                       })()}
                     </>
                   )}
                   {!form.paciente_id && <input type="text" required value="" onChange={() => {}} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }} tabIndex={-1} />}
+                  {pacienteSelOS && (
+                    <div style={{ marginTop: 6, padding: '6px 10px', background: 'var(--c-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '.78rem', color: 'var(--c-text-2)' }}>
+                      <strong>Obra Social:</strong> {pacienteSelOS}
+                      {conveniosOS.length > 0 ? (
+                        <span> — Convenios: {conveniosOS.map(c => `${c.prestacion_nombre || c.nombre_os} (cubre ${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(c.monto_os)}, copago ${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(c.monto_copago)})`).join(' / ')}</span>
+                      ) : <span style={{ color: 'var(--c-text-3)' }}> — Sin convenios registrados</span>}
+                    </div>
+                  )}
                 </div>
                 <div className="form-row cols-2">
                   <div className="form-group">
                     <label className="form-label">Fecha y hora <span className="req">*</span></label>
-                    <input className="form-input" type="datetime-local" required value={form.fecha_hora} onChange={set('fecha_hora')} />
+                    <input className="form-input" type="datetime-local" required value={form.fecha_hora}
+                      onChange={e => { setForm(f => ({ ...f, fecha_hora: e.target.value })); checkConflicto(e.target.value) }} />
+                    {conflicto && (
+                      <div style={{ marginTop: 6, padding: '8px 10px', background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 'var(--radius-sm)', fontSize: '.78rem', color: '#C2410C' }}>
+                        <strong>Conflicto:</strong> ya hay un turno con {conflicto.paciente_nombre} a las {format(parseISO(conflicto.fecha_hora), 'HH:mm')}.
+                        {horariosLibres.length > 0 && (
+                          <div style={{ marginTop: 5 }}>
+                            Horarios libres: {horariosLibres.map(h => (
+                              <button key={h.toISOString()} type="button"
+                                style={{ marginLeft: 6, padding: '2px 8px', background: 'var(--c-primary)', color: '#FFF', border: 'none', borderRadius: 4, fontSize: '.75rem', cursor: 'pointer' }}
+                                onClick={() => { const v = format(h, "yyyy-MM-dd'T'HH:mm"); setForm(f => ({ ...f, fecha_hora: v })); checkConflicto(v) }}>
+                                {format(h, 'HH:mm')}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Duración (min)</label>
@@ -410,6 +662,49 @@ export default function AgendaPage() {
                 <div style={{ flex: 1 }} />
                 <button type="button" className="btn btn-ghost" onClick={() => setModal(false)}>Cerrar</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : selected ? 'Actualizar' : 'Crear turno'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-modal: crear paciente nuevo desde turno */}
+      {modalNuevoPac && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setModalNuevoPac(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">👤 Alta rápida de paciente</span>
+              <button className="btn-close" onClick={() => setModalNuevoPac(false)}>✕</button>
+            </div>
+            <form onSubmit={handleNuevoPaciente}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label className="form-label">Nombre <span className="req">*</span></label>
+                    <input className="form-input" required value={nuevoPacForm.nombre}
+                      onChange={e => setNuevoPacForm(f => ({ ...f, nombre: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Apellido <span className="req">*</span></label>
+                    <input className="form-input" required value={nuevoPacForm.apellido}
+                      onChange={e => setNuevoPacForm(f => ({ ...f, apellido: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Teléfono</label>
+                  <input className="form-input" value={nuevoPacForm.telefono}
+                    onChange={e => setNuevoPacForm(f => ({ ...f, telefono: e.target.value }))} placeholder="11-5555-0000" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Obra social</label>
+                  <input className="form-input" value={nuevoPacForm.obra_social}
+                    onChange={e => setNuevoPacForm(f => ({ ...f, obra_social: e.target.value }))} placeholder="OSDE, Swiss Medical..." />
+                </div>
+                {nuevoPacError && <div className="alert alert-danger">{nuevoPacError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalNuevoPac(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={nuevoPacSaving}>{nuevoPacSaving ? 'Guardando...' : 'Crear y seleccionar'}</button>
               </div>
             </form>
           </div>

@@ -192,6 +192,10 @@ CREATE TABLE IF NOT EXISTS pagos (
   concepto TEXT,
   numero_recibo TEXT,
   notas TEXT,
+  monto_os REAL DEFAULT 0,
+  monto_copago REAL DEFAULT 0,
+  turno_id TEXT,
+  anulado INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -242,6 +246,18 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- ============================================================
+-- BLOQUES DE AGENDA (bloqueos de horario)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS bloques_agenda (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  fecha_hora_inicio TEXT NOT NULL,
+  fecha_hora_fin TEXT NOT NULL,
+  motivo TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================
 -- CONVENIOS (obras sociales)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS convenios (
@@ -269,6 +285,7 @@ CREATE TABLE IF NOT EXISTS anamnesis (
   embarazada INTEGER DEFAULT 0,
   fumador INTEGER DEFAULT 0,
   anticoagulantes INTEGER DEFAULT 0,
+  marcapasos INTEGER DEFAULT 0,
   ultima_visita_medico TEXT,
   cirugias_previas TEXT,
   antecedentes_odontologicos TEXT,

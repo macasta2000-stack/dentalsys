@@ -38,7 +38,7 @@ export default function InsumosPage() {
       setInsumos(prev => [...prev, insumo].sort((a, b) => a.nombre.localeCompare(b.nombre)))
       setModal(false)
       setForm({ nombre: '', descripcion: '', unidad: 'unidad', stock_actual: '', stock_minimo: '', precio_unitario: '', proveedor: '', categoria: 'general' })
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError('No se pudo guardar el insumo. El nombre es obligatorio.') }
     finally { setSaving(false) }
   }
 
@@ -53,7 +53,7 @@ export default function InsumosPage() {
       setInsumos(prev => prev.map(i => i.id === movModal.id ? updated : i))
       setMovModal(null)
       setMovForm({ tipo: 'entrada', cantidad: '', motivo: '' })
-    } catch (e) { setError(e.message || 'Error al registrar movimiento') }
+    } catch (e) { setError('No se pudo registrar el movimiento de stock. Verificá la cantidad.') }
     finally { setSaving(false) }
   }
 

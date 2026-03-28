@@ -20,7 +20,7 @@ export default function LoginPage() {
       ? await login(form.email, form.password)
       : await register(form.email, form.password, form.nombre)
     setLoading(false)
-    if (err) { setError(err); return }
+    if (err) { setError(mode === 'login' ? 'Email o contraseña incorrectos. Si olvidaste tu contraseña, contactá al soporte.' : err); return }
     navigate('/')
   }
 

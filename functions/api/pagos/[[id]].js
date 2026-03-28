@@ -75,7 +75,7 @@ export async function onRequestDelete({ data, env, params }) {
 
   // Marcar como anulado
   await env.DB.prepare(
-    `UPDATE pagos SET anulado = 1, updated_at = datetime('now') WHERE id = ?1 AND tenant_id = ?2`
+    `UPDATE pagos SET anulado = 1 WHERE id = ?1 AND tenant_id = ?2`
   ).bind(id, user.sub).run()
 
   // Revertir el saldo del paciente

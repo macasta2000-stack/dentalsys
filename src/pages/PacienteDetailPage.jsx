@@ -3,8 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import Odontograma from '../components/Odontograma'
-import { format } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { es } from 'date-fns/locale'
+
+function getWhatsAppUrl(tel) {
+  if (!tel) return null
+  const num = tel.replace(/\D/g, '')
+  const normalized = num.startsWith('549') ? num : num.startsWith('54') ? `549${num.slice(2)}` : `549${num}`
+  return `https://wa.me/${normalized}`
+}
 
 const ESTADOS_OD = [
   'sano','caries','obturado','corona','endodoncia',
@@ -23,6 +30,12 @@ const ENFERMEDADES_LIST = [
   { key: 'asma', label: 'Asma' },
   { key: 'otras', label: 'Otras (especificar en notas)' },
 ]
+
+const INDICACIONES_TEMPLATES = {
+  extraccion: `INDICACIONES POST-EXTRACCIÓN\n\n1. Morder la gasa durante 30 minutos. Si hay sangrado, reemplazar con gasa limpia.\n2. NO enjuagarse la boca durante las primeras 24 horas.\n3. Aplicar hielo en la zona (20 min con hielo, 20 min sin hielo) las primeras 6 horas.\n4. Dieta blanda y fría las primeras 24 horas. Evitar alimentos calientes, duros o picantes.\n5. NO fumar ni consumir alcohol durante las primeras 48 horas.\n6. Tomar la medicación indicada según lo prescrito.\n7. Evitar esfuerzo físico intenso durante 24 horas.\n8. Si el sangrado no cede, hay dolor intenso o fiebre, comunicarse con el consultorio.`,
+  cirugia: `INDICACIONES POST-OPERATORIAS\n\n1. Morder la gasa durante 1 hora. Reemplazar si hay sangrado activo.\n2. Aplicar hielo en la zona durante las primeras 48 horas (20 min con hielo, 20 min sin).\n3. Dieta líquida y blanda las primeras 48 horas. NO alimentos calientes, duros ni picantes.\n4. NO escupir, NO hacer buches ni aspirar por bombilla durante 3 días.\n5. NO fumar ni consumir alcohol durante al menos 72 horas.\n6. Tomar la medicación recetada en los horarios indicados. No interrumpir el antibiótico.\n7. Cepillar con cuidado evitando la zona operada durante 3–5 días.\n8. Evitar esfuerzo físico durante 24–48 horas.\n9. Puede haber hinchazón las primeras 48 horas, es normal.\n10. Si hay fiebre >38°C, sangrado persistente o mal olor, comunicarse urgente con el consultorio.`,
+  blanqueamiento: `INDICACIONES POST-BLANQUEAMIENTO\n\n1. Evitar alimentos y bebidas que manchen durante 48 horas:\n   - Evitar: café, té, vino tinto, mate, gaseosas oscuras, salsas con tomate.\n   - Permitido: arroz, pollo, queso blanco, papa, pera, agua.\n2. Es normal sentir sensibilidad dental 24–48 horas. Es temporaria.\n3. Si hay sensibilidad, puede tomar ibuprofeno o paracetamol según indicación.\n4. NO fumar durante las primeras 48 horas.\n5. Cepillado suave con pasta para dientes sensibles los primeros días.\n6. Evitar alimentos/bebidas muy calientes o muy frías durante 24–48 horas.\n7. El resultado final se aprecia a las 2–3 semanas.\n8. Para mantener el resultado: buena higiene, evitar hábitos que manchen, controles periódicos.`,
+}
 
 function fmt(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n ?? 0)
@@ -71,18 +84,38 @@ export default function PacienteDetailPage() {
   const [editTurno, setEditTurno] = useState(null)
   const [turnoForm, setTurnoForm] = useState({ fecha_hora: '', duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '' })
 
+  // Modal cobro (turno completado)
+  const [modalCobro, setModalCobro] = useState(false)
+  const [turnoACobrar, setTurnoACobrar] = useState(null)
+  const [cobroForm, setCobroForm] = useState({ monto: '', metodo_pago: 'efectivo', concepto: '', monto_os: 0, monto_copago: 0 })
+  const [cobroSaving, setCobroSaving] = useState(false)
+  const [cobroError, setCobroError] = useState('')
+
   // Anamnesis
   const [editAnamnesis, setEditAnamnesis] = useState(false)
   const [anamnesisForm, setAnamnesisForm] = useState({
-    motivo_consulta: '', enfermedades: {}, medicacion: [], alergias: '',
-    embarazada: false, fumador: false, anticoagulantes: false,
+    motivo_consulta: '', enfermedades: {}, medicacion: [], alergias: {}, alergias_otras: '',
+    embarazada: false, fumador: false, anticoagulantes: false, marcapasos: false,
     ultima_visita_medico: '', cirugias_previas: '', antecedentes_odontologicos: '', firma_fecha: ''
   })
   const [medicacionInput, setMedicacionInput] = useState('')
 
+  const ALERGIAS_LIST = [
+    { key: 'anestesicos', label: 'Anestésicos locales' },
+    { key: 'latex', label: 'Látex' },
+    { key: 'penicilina', label: 'Penicilina/antibióticos' },
+    { key: 'aines', label: 'AINEs (ibuprofeno, etc.)' },
+    { key: 'otras', label: 'Otras' },
+  ]
+
   // Receta
   const [modalReceta, setModalReceta] = useState(false)
   const [recetaMeds, setRecetaMeds] = useState([{ medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
+
+  // Indicaciones post-operatorias
+  const [modalIndicaciones, setModalIndicaciones] = useState(false)
+  const [indicacionesTipo, setIndicacionesTipo] = useState('extraccion')
+  const [indicacionesTexto, setIndicacionesTexto] = useState('')
 
   const [saving, setSaving] = useState(false)
 
@@ -128,16 +161,25 @@ export default function PacienteDetailPage() {
       if (anam) {
         let enfermedades = {}
         let medicacion = []
+        let alergias = {}
+        let alergias_otras = ''
         try { enfermedades = JSON.parse(anam.enfermedades ?? '{}') } catch {}
         try { medicacion = JSON.parse(anam.medicacion ?? '[]') } catch {}
+        try {
+          const a = JSON.parse(anam.alergias ?? '{}')
+          if (typeof a === 'object' && !Array.isArray(a)) { alergias = a; alergias_otras = a._otras ?? '' }
+          else alergias_otras = String(anam.alergias ?? '')
+        } catch { alergias_otras = anam.alergias ?? '' }
         setAnamnesisForm({
           motivo_consulta: anam.motivo_consulta ?? '',
           enfermedades,
           medicacion,
-          alergias: anam.alergias ?? '',
+          alergias,
+          alergias_otras,
           embarazada: !!anam.embarazada,
           fumador: !!anam.fumador,
           anticoagulantes: !!anam.anticoagulantes,
+          marcapasos: !!anam.marcapasos,
           ultima_visita_medico: anam.ultima_visita_medico ?? '',
           cirugias_previas: anam.cirugias_previas ?? '',
           antecedentes_odontologicos: anam.antecedentes_odontologicos ?? '',
@@ -170,7 +212,7 @@ export default function PacienteDetailPage() {
       const updated = await api.pacientes.update(id, editForm)
       setPaciente(p => ({ ...p, ...updated }))
       setEditPaciente(false)
-    } catch (err) { alert(err.message) }
+    } catch (err) { alert('No se pudo guardar el paciente. Nombre y apellido son obligatorios.') }
     finally { setEditSaving(false) }
   }
 
@@ -256,6 +298,46 @@ export default function PacienteDetailPage() {
     setModalTurno(true)
   }
 
+  function openCobro(t) {
+    const prestacion = prestaciones.find(p => p.id === t.prestacion_id)
+    const montoBase = prestacion?.precio ?? 0
+    setTurnoACobrar(t)
+    setCobroForm({
+      monto: String(montoBase),
+      metodo_pago: 'efectivo',
+      concepto: prestacion ? prestacion.nombre : (t.motivo || 'Consulta'),
+      monto_os: 0,
+      monto_copago: 0,
+    })
+    setCobroError('')
+    setModalCobro(true)
+  }
+
+  async function handleCobro(e) {
+    e.preventDefault()
+    if (!cobroForm.monto || Number(cobroForm.monto) <= 0) { setCobroError('Ingresá un monto válido'); return }
+    setCobroSaving(true); setCobroError('')
+    try {
+      const pagoData = {
+        paciente_id: id,
+        monto: Number(cobroForm.monto),
+        metodo_pago: cobroForm.metodo_pago,
+        concepto: cobroForm.concepto || 'Consulta',
+        turno_id: turnoACobrar.id,
+      }
+      if (cobroForm.metodo_pago === 'obra_social') {
+        pagoData.monto_os = Number(cobroForm.monto_os) || 0
+        pagoData.monto_copago = Number(cobroForm.monto_copago) || 0
+      }
+      const p = await api.pagos.create(pagoData)
+      setPagos(prev => [p, ...prev])
+      setPaciente(pac => ({ ...pac, saldo: (pac.saldo || 0) + Number(cobroForm.monto) }))
+      setModalCobro(false)
+      setTurnoACobrar(null)
+    } catch (err) { setCobroError('No se pudo registrar el pago. Verificá que el monto sea mayor a cero.') }
+    finally { setCobroSaving(false) }
+  }
+
   async function handleTurnoSave(e) {
     e.preventDefault()
     setSaving(true)
@@ -265,12 +347,17 @@ export default function PacienteDetailPage() {
       if (editTurno) {
         const updated = await api.turnos.update(editTurno.id, payload)
         setTurnos(prev => prev.map(t => t.id === editTurno.id ? { ...t, ...updated } : t))
+        setModalTurno(false)
+        // Si se marcó como completado, abrir modal cobro
+        if (payload.estado === 'completado' && editTurno.estado !== 'completado') {
+          openCobro({ ...editTurno, ...updated })
+        }
       } else {
         const created = await api.turnos.create(payload)
         setTurnos(prev => [created, ...prev])
+        setModalTurno(false)
       }
-      setModalTurno(false)
-    } catch (err) { alert(err.message) }
+    } catch (err) { alert('No se pudo guardar el turno. Verificá que la fecha/hora sean válidas.') }
     finally { setSaving(false) }
   }
 
@@ -286,14 +373,25 @@ export default function PacienteDetailPage() {
     e.preventDefault()
     setSaving(true)
     try {
+      const alergiasSerialized = JSON.stringify({ ...anamnesisForm.alergias, _otras: anamnesisForm.alergias_otras })
       const result = await api.anamnesis.save({
         paciente_id: id,
-        ...anamnesisForm,
+        motivo_consulta: anamnesisForm.motivo_consulta,
+        enfermedades: anamnesisForm.enfermedades,
+        medicacion: anamnesisForm.medicacion,
+        alergias: alergiasSerialized,
+        embarazada: anamnesisForm.embarazada,
+        fumador: anamnesisForm.fumador,
+        anticoagulantes: anamnesisForm.anticoagulantes,
+        marcapasos: anamnesisForm.marcapasos,
+        ultima_visita_medico: anamnesisForm.ultima_visita_medico,
+        cirugias_previas: anamnesisForm.cirugias_previas,
+        antecedentes_odontologicos: anamnesisForm.antecedentes_odontologicos,
         firma_fecha: anamnesisForm.firma_fecha || new Date().toISOString().split('T')[0],
       })
       setAnamnesis(result)
       setEditAnamnesis(false)
-    } catch (err) { alert(err.message) }
+    } catch (err) { alert('No se pudo guardar la anamnesis. Intentá nuevamente.') }
     finally { setSaving(false) }
   }
 
@@ -318,6 +416,11 @@ export default function PacienteDetailPage() {
   const [presupuestoForm, setPresupuestoForm] = useState({ notas: '', fecha_vencimiento: '' })
   const [presupuestoItems, setPresupuestoItems] = useState([{ prestacion_id: '', descripcion: '', cantidad: 1, precio_unitario: '' }])
   const [presupuestoSaving, setPresupuestoSaving] = useState(false)
+
+  // Modal: presupuesto aprobado → generar turnos
+  const [modalGenTurnos, setModalGenTurnos] = useState(false)
+  const [presupAprobado, setPresupAprobado] = useState(null) // presupuesto que se aprobó
+  const [genTurnosSaving, setGenTurnosSaving] = useState(false)
 
   function openNuevoPresupuesto() {
     setPresupuestoForm({ notas: '', fecha_vencimiento: '' })
@@ -372,17 +475,25 @@ export default function PacienteDetailPage() {
         })),
         notas: presupuestoForm.notas || null,
         fecha_vencimiento: presupuestoForm.fecha_vencimiento || null,
-        estado: 'pendiente',
+        estado: presupuestoForm.estado ?? (presupuestoDetalle ? presupuestoDetalle.estado : 'pendiente'),
       }
+      const estadoAnterior = presupuestoDetalle?.estado
       if (presupuestoDetalle) {
         const updated = await api.presupuestos.update(presupuestoDetalle.id, payload)
         setPresupuestos(prev => prev.map(p => p.id === presupuestoDetalle.id ? { ...p, ...updated } : p))
+        // Si se aprobó → ofrecer generar turnos
+        if (payload.estado === 'aprobado' && estadoAnterior !== 'aprobado') {
+          setPresupAprobado({ ...presupuestoDetalle, ...updated })
+          setModalPresupuesto(false)
+          setModalGenTurnos(true)
+          return
+        }
       } else {
         const created = await api.presupuestos.create(payload)
         setPresupuestos(prev => [created, ...prev])
       }
       setModalPresupuesto(false)
-    } catch (err) { alert(err.message) }
+    } catch (err) { alert(`No se pudo guardar el presupuesto. ${err.message}`) }
     finally { setPresupuestoSaving(false) }
   }
 
@@ -407,15 +518,69 @@ export default function PacienteDetailPage() {
     window.print()
   }
 
+  function openIndicaciones(tipo) {
+    setIndicacionesTipo(tipo)
+    setIndicacionesTexto(INDICACIONES_TEMPLATES[tipo])
+    setModalIndicaciones(true)
+  }
+
+  function printIndicaciones() {
+    window.print()
+  }
+
+  async function handleGenerarTurnos() {
+    if (!presupAprobado || !presupuestoDetalleData) return
+    setGenTurnosSaving(true)
+    try {
+      const items = (presupuestoDetalleData.items ?? []).filter(i => i.descripcion)
+      let fecha = new Date()
+      fecha.setHours(9, 0, 0, 0)
+      fecha = addDays(fecha, 1)
+      for (const item of items) {
+        await api.turnos.create({
+          paciente_id: id,
+          fecha_hora: fecha.toISOString(),
+          duracion_minutos: 60,
+          motivo: item.descripcion,
+          estado: 'programado',
+        })
+        fecha = addDays(fecha, 7)
+      }
+      const nuevosTurnos = await api.turnos.list({ paciente_id: id }).catch(() => turnos)
+      setTurnos(nuevosTurnos ?? turnos)
+      setModalGenTurnos(false)
+      setPresupAprobado(null)
+      setTab('turnos')
+    } catch (err) { alert('No se pudieron crear todos los turnos. Intentá nuevamente.') }
+    finally { setGenTurnosSaving(false) }
+  }
+
   if (loading) return <div style={{ textAlign: 'center', paddingTop: 60 }}><span className="spinner" /></div>
   if (!paciente) return <div className="empty-state"><div className="empty-title">Paciente no encontrado</div><button className="btn btn-ghost" onClick={() => navigate('/pacientes')}>← Volver</button></div>
 
   const totalPagado = pagos.reduce((s, p) => s + Number(p.monto), 0)
 
+  // Alerta anamnesis
+  const anamnesisAlerta = (() => {
+    if (!anamnesis) return false
+    let enf = {}
+    try { enf = JSON.parse(anamnesis.enfermedades ?? '{}') } catch {}
+    return Object.values(enf).some(Boolean) || !!anamnesis.anticoagulantes || !!anamnesis.marcapasos
+  })()
+
   return (
     <div>
-      {/* CSS de impresión para recetas y presupuestos */}
-      <style>{`@media print { body > * { display: none; } .receta-print { display: block !important; } .presupuesto-print { display: block !important; } .modal-overlay { position: static !important; background: none !important; padding: 0 !important; } .modal { box-shadow: none !important; max-height: none !important; } }`}</style>
+      {/* CSS de impresión para recetas, presupuestos e indicaciones */}
+      <style>{`@media print { body > * { display: none; } .receta-print { display: block !important; } .presupuesto-print { display: block !important; } .indicaciones-print { display: block !important; } .modal-overlay { position: static !important; background: none !important; padding: 0 !important; } .modal { box-shadow: none !important; max-height: none !important; } .modal-footer { display: none !important; } }`}</style>
+
+      {/* Banner alerta anamnesis */}
+      {anamnesisAlerta && (
+        <div style={{ background: '#FFF3CD', border: '1px solid #F59E0B', borderRadius: 'var(--radius-sm)', padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', color: '#92400E' }}>
+          <span style={{ fontSize: '1rem' }}>⚠️</span>
+          <strong>Ver anamnesis antes de atender</strong> — este paciente tiene enfermedades sistémicas o condiciones especiales registradas.
+          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', fontSize: '.75rem' }} onClick={() => setTab('anamnesis')}>Ver anamnesis</button>
+        </div>
+      )}
 
       {/* Header paciente */}
       <div className="pd-header">
@@ -434,10 +599,56 @@ export default function PacienteDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setEditPaciente(true)}>Editar ficha</button>
+          {getWhatsAppUrl(paciente.telefono) && (
+            <a href={getWhatsAppUrl(paciente.telefono)} target="_blank" rel="noopener noreferrer"
+              className="btn btn-sm"
+              style={{ background: '#25D366', color: '#FFF', textDecoration: 'none' }}>
+              WhatsApp
+            </a>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => setModalReceta(true)}>Nueva receta</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => openIndicaciones('extraccion')}>Indicaciones</button>
           <button className="btn btn-secondary btn-sm" onClick={() => setModalPago(true)}>+ Pago</button>
           <button className="btn btn-primary btn-sm" onClick={() => setModalEvol(true)}>+ Evolución</button>
         </div>
       </div>
+
+      {/* Barra de info rápida */}
+      {(() => {
+        const ahora = new Date()
+        const ultTurno = [...turnos].filter(t => t.estado === 'completado').sort((a,b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))[0]
+        const proxTurno = [...turnos].filter(t => new Date(t.fecha_hora) > ahora && !['cancelado','ausente'].includes(t.estado)).sort((a,b) => new Date(a.fecha_hora) - new Date(b.fecha_hora))[0]
+        const ultEvol = evoluciones[0]
+        if (!ultTurno && !proxTurno && !ultEvol && !(paciente.saldo < 0)) return null
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, marginBottom: 12, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+            {ultTurno && (
+              <div style={{ padding: '8px 16px', borderRight: '1px solid var(--c-border)', fontSize: '.78rem' }}>
+                <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Último turno</div>
+                <div style={{ color: 'var(--c-text)', fontWeight: 500, marginTop: 2 }}>{format(new Date(ultTurno.fecha_hora), "d MMM yyyy", { locale: es })}{ultTurno.motivo ? ` — ${ultTurno.motivo}` : ''}</div>
+              </div>
+            )}
+            {proxTurno && (
+              <div style={{ padding: '8px 16px', borderRight: '1px solid var(--c-border)', fontSize: '.78rem' }}>
+                <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Próximo turno</div>
+                <div style={{ color: 'var(--c-primary)', fontWeight: 600, marginTop: 2 }}>{format(new Date(proxTurno.fecha_hora), "d MMM yyyy, HH:mm", { locale: es })}</div>
+              </div>
+            )}
+            {ultEvol && (
+              <div style={{ padding: '8px 16px', borderRight: '1px solid var(--c-border)', fontSize: '.78rem' }}>
+                <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Última prestación</div>
+                <div style={{ color: 'var(--c-text)', fontWeight: 500, marginTop: 2 }}>{ultEvol.prestacion_nombre || ultEvol.descripcion?.slice(0, 40) || '—'}</div>
+              </div>
+            )}
+            {paciente.saldo < 0 && (
+              <div style={{ padding: '8px 16px', fontSize: '.78rem' }}>
+                <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Deuda</div>
+                <div style={{ color: 'var(--c-danger)', fontWeight: 700, marginTop: 2 }}>{fmt(Math.abs(paciente.saldo))}</div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div className="tabs">
@@ -449,6 +660,30 @@ export default function PacienteDetailPage() {
       {/* HISTORIA CLÍNICA */}
       {tab === 'hc' && (
         <div>
+          {/* Resumen anamnesis en HC */}
+          {anamnesis && (() => {
+            let enf = {}
+            let alg = {}
+            try { enf = JSON.parse(anamnesis.enfermedades ?? '{}') } catch {}
+            try { alg = JSON.parse(anamnesis.alergias ?? '{}') } catch {}
+            const enfsActivas = ENFERMEDADES_LIST.filter(e => enf[e.key]).map(e => e.label)
+            const tieneCondiciones = enfsActivas.length > 0 || anamnesis.anticoagulantes || anamnesis.marcapasos
+            if (!tieneCondiciones) return null
+            return (
+              <div style={{ marginBottom: 12, padding: '8px 14px', background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 'var(--radius-sm)', fontSize: '.82rem' }}>
+                <strong style={{ color: '#C2410C' }}>Condiciones médicas relevantes:</strong>
+                <span style={{ marginLeft: 8, color: '#92400E' }}>
+                  {enfsActivas.join(', ')}
+                  {anamnesis.anticoagulantes ? (enfsActivas.length ? ', ' : '') + 'Anticoagulantes' : ''}
+                  {anamnesis.marcapasos ? ((enfsActivas.length || anamnesis.anticoagulantes) ? ', ' : '') + 'Marcapasos' : ''}
+                </span>
+                {Object.values(alg).some(Boolean) && (
+                  <span style={{ marginLeft: 12, color: '#92400E' }}>| <strong>Alergias</strong></span>
+                )}
+                <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8, fontSize: '.72rem' }} onClick={() => setTab('anamnesis')}>Ver completo</button>
+              </div>
+            )
+          })()}
           <div className="page-actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => setModalReceta(true)}>Nueva Receta</button>
             <button className="btn btn-primary btn-sm" onClick={() => { setEditEvol(null); setEvolForm({ descripcion: '', prestacion_id: '', monto: '', piezas_tratadas: '' }); setModalEvol(true) }}>+ Agregar evolución</button>
@@ -561,13 +796,25 @@ export default function PacienteDetailPage() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Alergias (anestésicos, látex, penicilina, etc.)</label>
-                  <input className="form-input" value={anamnesisForm.alergias}
-                    onChange={e => setAnamnesisForm(f => ({ ...f, alergias: e.target.value }))} />
+                  <label className="form-label">Alergias conocidas</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+                    {ALERGIAS_LIST.map(al => (
+                      <label key={al.key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '.85rem' }}>
+                        <input type="checkbox" checked={!!anamnesisForm.alergias?.[al.key]}
+                          onChange={e => setAnamnesisForm(f => ({ ...f, alergias: { ...f.alergias, [al.key]: e.target.checked } }))} />
+                        {al.label}
+                      </label>
+                    ))}
+                  </div>
+                  {anamnesisForm.alergias?.otras && (
+                    <input className="form-input" style={{ marginTop: 6 }} placeholder="Especificar otras alergias..."
+                      value={anamnesisForm.alergias_otras}
+                      onChange={e => setAnamnesisForm(f => ({ ...f, alergias_otras: e.target.value }))} />
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-                  {[['embarazada','¿Embarazada?'],['fumador','¿Fumador/a?'],['anticoagulantes','¿Toma anticoagulantes?']].map(([k,l]) => (
+                  {[['embarazada','¿Embarazada?'],['fumador','¿Fumador/a?'],['anticoagulantes','¿Toma anticoagulantes?'],['marcapasos','¿Tiene marcapasos?']].map(([k,l]) => (
                     <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '.85rem', fontWeight: 600 }}>
                       <input type="checkbox" checked={!!anamnesisForm[k]}
                         onChange={e => setAnamnesisForm(f => ({ ...f, [k]: e.target.checked }))} />
@@ -697,8 +944,16 @@ export default function PacienteDetailPage() {
                       <td className="font-semibold">{fmt(p.total)}</td>
                       <td className="text-sm">{fmt(p.total_pagado)}</td>
                       <td><span className={`badge badge-${p.estado === 'completado' ? 'success' : p.estado === 'aprobado' ? 'info' : p.estado === 'vencido' ? 'danger' : 'warning'}`}>{p.estado}</span></td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => openPresupuestoDetalle(p)}>Ver →</button>
+                      <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openPresupuestoDetalle(p)}>Editar</button>
+                        {getWhatsAppUrl(paciente.telefono) && (
+                          <button className="btn btn-ghost btn-sm" style={{ color: '#25D366', marginLeft: 4 }} onClick={() => {
+                            const items = (p.items ?? []).length > 0 ? p.items : []
+                            const lineas = items.map(i => `• ${i.descripcion} x${i.cantidad} — ${fmt(i.precio_unitario * i.cantidad)}`).join('\n')
+                            const texto = `Hola ${paciente.nombre}, te enviamos el presupuesto del consultorio:\n*Presupuesto N° ${p.numero}*\n${lineas}\n*Total: ${fmt(p.total)}*\nAnte cualquier consulta, estamos a tu disposición.`
+                            window.open(`${getWhatsAppUrl(paciente.telefono)}?text=${encodeURIComponent(texto)}`, '_blank')
+                          }}>WhatsApp</button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1012,6 +1267,9 @@ export default function PacienteDetailPage() {
                 {editTurno && (
                   <button type="button" className="btn btn-danger btn-sm" onClick={() => handleCancelTurno(editTurno.id)}>Cancelar turno</button>
                 )}
+                {editTurno && editTurno.estado !== 'completado' && (
+                  <button type="button" className="btn btn-success btn-sm" onClick={() => { setModalTurno(false); openCobro(editTurno) }}>Cobrar</button>
+                )}
                 <div style={{ flex: 1 }} />
                 <button type="button" className="btn btn-ghost" onClick={() => setModalTurno(false)}>Cerrar</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : editTurno ? 'Actualizar' : 'Crear turno'}</button>
@@ -1103,6 +1361,136 @@ export default function PacienteDetailPage() {
           </div>
         </div>
       )}
+      {/* MODAL: Indicaciones post-operatorias */}
+      {modalIndicaciones && (
+        <div className="modal-overlay" onClick={() => setModalIndicaciones(false)}>
+          <div className="modal modal-lg indicaciones-print" onClick={e => e.stopPropagation()} style={{ maxHeight: '95vh' }}>
+            <div className="modal-header">
+              <span className="modal-title">Indicaciones post-operatorias</span>
+              <button className="btn-close" onClick={() => setModalIndicaciones(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Header imprimible */}
+              <div style={{ borderBottom: '2px solid var(--c-border)', paddingBottom: 14, marginBottom: 4 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700 }}>
+                  {configuracion?.nombre_profesional || 'Profesional'}
+                </div>
+                {configuracion?.especialidad && <div className="text-sm text-muted">{configuracion.especialidad}</div>}
+                {configuracion?.matricula && <div className="text-sm">Matrícula: {configuracion.matricula}</div>}
+                {configuracion?.telefono && <div className="text-sm">Tel: {configuracion.telefono}</div>}
+                {configuracion?.direccion && <div className="text-sm">{configuracion.direccion}{configuracion.ciudad ? `, ${configuracion.ciudad}` : ''}</div>}
+                <div className="text-sm" style={{ marginTop: 8 }}>
+                  Paciente: <strong>{paciente.apellido}, {paciente.nombre}</strong>
+                  {paciente.dni && ` — DNI ${paciente.dni}`}
+                </div>
+                <div className="text-sm text-muted">Fecha: {format(new Date(), "d 'de' MMMM yyyy", { locale: es })}</div>
+              </div>
+
+              {/* Selector de tipo */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[['extraccion','Post-extracción'],['cirugia','Post-cirugía'],['blanqueamiento','Post-blanqueamiento']].map(([tipo, label]) => (
+                  <button key={tipo} type="button"
+                    className={`btn btn-sm ${indicacionesTipo === tipo ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => { setIndicacionesTipo(tipo); setIndicacionesTexto(INDICACIONES_TEMPLATES[tipo]) }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Texto editable */}
+              <div className="form-group">
+                <label className="form-label">Indicaciones (editable)</label>
+                <textarea
+                  className="form-input"
+                  rows={16}
+                  style={{ fontFamily: 'monospace', fontSize: '.85rem', whiteSpace: 'pre-wrap' }}
+                  value={indicacionesTexto}
+                  onChange={e => setIndicacionesTexto(e.target.value)}
+                />
+              </div>
+
+              {/* Firma */}
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ borderTop: '1px solid var(--c-text)', width: 200, paddingTop: 6, fontSize: '.82rem' }}>
+                    Firma y sello del profesional
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => setModalIndicaciones(false)}>Cerrar</button>
+              <button type="button" className="btn btn-primary" onClick={printIndicaciones}>Imprimir indicaciones</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Cobro de turno completado */}
+      {modalCobro && turnoACobrar && (
+        <div className="modal-overlay" onClick={() => setModalCobro(false)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Cobrar turno</span>
+              <button className="btn-close" onClick={() => setModalCobro(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCobro}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="alert alert-info" style={{ fontSize: '.82rem' }}>
+                  Turno del {turnoACobrar.fecha_hora ? format(new Date(turnoACobrar.fecha_hora), "d MMM yyyy, HH:mm", { locale: es }) : ''}
+                  {turnoACobrar.motivo && <> — {turnoACobrar.motivo}</>}
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label className="form-label">Monto total <span className="req">*</span></label>
+                    <input className="form-input" type="number" min="0" required value={cobroForm.monto}
+                      onChange={e => setCobroForm(f => ({ ...f, monto: e.target.value }))} placeholder="$0" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Concepto</label>
+                    <input className="form-input" value={cobroForm.concepto}
+                      onChange={e => setCobroForm(f => ({ ...f, concepto: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Método de pago</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                    {[['efectivo','Efectivo'],['transferencia','Transferencia'],['tarjeta_debito','Débito'],['tarjeta_credito','Crédito'],['obra_social','Obra Social']].map(([val, label]) => (
+                      <button key={val} type="button"
+                        className={`btn btn-sm ${cobroForm.metodo_pago === val ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setCobroForm(f => ({ ...f, metodo_pago: val }))}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {cobroForm.metodo_pago === 'obra_social' && (
+                  <div className="form-row cols-2">
+                    <div className="form-group">
+                      <label className="form-label">Monto Obra Social</label>
+                      <input className="form-input" type="number" min="0" value={cobroForm.monto_os}
+                        onChange={e => setCobroForm(f => ({ ...f, monto_os: e.target.value }))} placeholder="$0" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Copago del paciente</label>
+                      <input className="form-input" type="number" min="0" value={cobroForm.monto_copago}
+                        onChange={e => setCobroForm(f => ({ ...f, monto_copago: e.target.value }))} placeholder="$0" />
+                    </div>
+                  </div>
+                )}
+                {cobroError && <div className="alert alert-danger">{cobroError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalCobro(false)}>Omitir por ahora</button>
+                <button type="submit" className="btn btn-success" disabled={cobroSaving}>
+                  {cobroSaving ? 'Registrando...' : 'Registrar cobro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: Nuevo/Editar presupuesto */}
       {modalPresupuesto && (
         <div className="modal-overlay" onClick={() => setModalPresupuesto(false)}>
@@ -1183,6 +1571,21 @@ export default function PacienteDetailPage() {
                     <input className="form-input" type="date" value={presupuestoForm.fecha_vencimiento} onChange={e => setPresupuestoForm(f => ({ ...f, fecha_vencimiento: e.target.value }))} />
                   </div>
                 </div>
+                {presupuestoDetalle && (
+                  <div className="form-group">
+                    <label className="form-label">Estado del presupuesto</label>
+                    <select className="form-input" value={presupuestoForm.estado ?? presupuestoDetalle.estado}
+                      onChange={e => setPresupuestoForm(f => ({ ...f, estado: e.target.value }))}
+                      style={{ maxWidth: 220 }}>
+                      <option value="pendiente">Pendiente</option>
+                      <option value="aprobado">Aprobado</option>
+                      <option value="en_curso">En curso</option>
+                      <option value="completado">Completado</option>
+                      <option value="rechazado">Rechazado</option>
+                      <option value="vencido">Vencido</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Firma imprimible */}
                 <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
@@ -1201,6 +1604,29 @@ export default function PacienteDetailPage() {
                 <button type="submit" className="btn btn-primary" disabled={presupuestoSaving}>{presupuestoSaving ? 'Guardando...' : presupuestoDetalle ? 'Guardar cambios' : 'Crear presupuesto'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: Presupuesto aprobado → generar turnos */}
+      {modalGenTurnos && (
+        <div className="modal-overlay" onClick={() => setModalGenTurnos(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <span className="modal-title">Presupuesto aprobado</span>
+              <button className="btn-close" onClick={() => setModalGenTurnos(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: 8 }}>¿Querés programar los turnos del tratamiento?</p>
+              <p className="text-sm text-muted" style={{ marginBottom: 0 }}>
+                Se creará un turno por cada ítem del presupuesto, espaciados 7 días a partir de mañana a las 9:00 hs.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setModalGenTurnos(false); setPresupAprobado(null) }}>No, después</button>
+              <button className="btn btn-primary" onClick={handleGenerarTurnos} disabled={genTurnosSaving}>
+                {genTurnosSaving ? 'Creando turnos...' : 'Sí, programar turnos'}
+              </button>
+            </div>
           </div>
         </div>
       )}

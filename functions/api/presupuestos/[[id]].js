@@ -1,5 +1,5 @@
 import { ok, created, err, notFound, cors } from '../../_lib/response.js'
-import { findOne, insert, update, newId } from '../../_lib/db.js'
+import { findOne, insert, update, newId, remove } from '../../_lib/db.js'
 
 export async function onRequestOptions() { return cors() }
 
@@ -129,4 +129,14 @@ export async function onRequestPatch({ request, data, env, params }) {
   }
 
   return ok(updated)
+}
+
+export async function onRequestDelete({ data, env, params }) {
+  const { user } = data
+  const id = params?.id?.[0]
+  if (!id) return err('ID requerido')
+  const presup = await findOne(env.DB, 'presupuestos', { where: { id, tenant_id: user.sub } })
+  if (!presup) return notFound('Presupuesto')
+  await update(env.DB, 'presupuestos', id, { estado: 'rechazado' }, user.sub)
+  return ok({ mensaje: 'Presupuesto rechazado' })
 }

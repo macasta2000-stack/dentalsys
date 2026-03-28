@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=odontologo",
     "db:init": "wrangler d1 execute dentalsys-db --file=schema.sql",
     "db:local": "wrangler d1 execute dentalsys-db --local --file=schema.sql"
   },

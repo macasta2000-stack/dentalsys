@@ -37,3 +37,12 @@ export async function onRequestPatch({ request, data, env, params }) {
   if (!updated) return notFound('Prestación')
   return ok(updated)
 }
+
+export async function onRequestDelete({ data, env, params }) {
+  const { user } = data
+  const id = params?.id?.[0]
+  if (!id) return err('ID requerido')
+  const updated = await update(env.DB, 'prestaciones', id, { activo: 0 }, user.sub)
+  if (!updated) return notFound('Prestación')
+  return ok({ mensaje: 'Prestación desactivada' })
+}

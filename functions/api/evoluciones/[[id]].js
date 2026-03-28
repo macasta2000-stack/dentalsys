@@ -54,3 +54,13 @@ export async function onRequestPatch({ request, data, env, params }) {
   if (!updated) return notFound('Evolución')
   return ok(updated)
 }
+
+export async function onRequestDelete({ data, env, params }) {
+  const { user } = data
+  const id = params?.id?.[0]
+  if (!id) return err('ID requerido')
+  const existing = await findOne(env.DB, 'evoluciones', { where: { id, tenant_id: user.sub } })
+  if (!existing) return notFound('Evolución')
+  await env.DB.prepare(`DELETE FROM evoluciones WHERE id = ?1 AND tenant_id = ?2`).bind(id, user.sub).run()
+  return ok({ mensaje: 'Evolución eliminada' })
+}

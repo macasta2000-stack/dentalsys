@@ -20,6 +20,10 @@ export default function CajaPage() {
   const [deudores, setDeudores] = useState([])
   const [filtroOS, setFiltroOS] = useState('')
   const [tabCaja, setTabCaja] = useState('movimientos') // 'movimientos' | 'deudores'
+  const [modalPago, setModalPago] = useState(false)
+  const [pagoDeudor, setPagoDeudor] = useState(null)
+  const [pagoForm, setPagoForm] = useState({ monto: '', metodo_pago: 'efectivo', concepto: '' })
+  const [pagoSaving, setPagoSaving] = useState(false)
   const [rangoDesde, setRangoDesde] = useState('')
   const [rangoHasta, setRangoHasta] = useState('')
 
@@ -95,12 +99,30 @@ export default function CajaPage() {
     window.print()
   }
 
+  function openPagoDeudor(pac) {
+    setPagoDeudor(pac)
+    setPagoForm({ monto: String(Math.abs(pac.saldo ?? 0)), metodo_pago: 'efectivo', concepto: 'Saldo pendiente' })
+    setModalPago(true)
+  }
+
+  async function handlePagoDeudor(e) {
+    e.preventDefault()
+    setPagoSaving(true)
+    try {
+      await api.pagos.create({ paciente_id: pagoDeudor.id, monto: Number(pagoForm.monto), metodo_pago: pagoForm.metodo_pago, concepto: pagoForm.concepto })
+      setDeudores(prev => prev.map(p => p.id === pagoDeudor.id ? { ...p, saldo: (p.saldo ?? 0) + Number(pagoForm.monto) } : p).filter(p => (p.saldo ?? 0) < 0))
+      setModalPago(false)
+      await loadPagos()
+    } catch (e) { alert(e.message) }
+    finally { setPagoSaving(false) }
+  }
+
   async function handleAnularPago(pago) {
     if (!confirm(`¿Anular el pago de ${fmt(pago.monto)} de ${pago.paciente_nombre || 'este paciente'}? Esta acción revertirá el saldo del paciente.`)) return
     try {
       await api.pagos.anular(pago.id)
       await loadPagos()
-    } catch (e) { alert(e.message || 'Error al anular pago') }
+    } catch (e) { alert('No se pudo anular el pago. Intentá nuevamente o contactá al soporte.') }
   }
 
   return (
@@ -136,10 +158,34 @@ export default function CajaPage() {
       </div>
 
       {/* Encabezado de cierre de caja para impresión */}
-      <div className="print-show" style={{ padding: 20 }}>
-        <h1 style={{ fontFamily: 'serif', fontSize: '1.4rem', marginBottom: 4 }}>Cierre de Caja</h1>
-        <p>{format(new Date(), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
+      <div className="print-show" style={{ padding: 20, fontFamily: 'serif' }}>
+        <h1 style={{ fontSize: '1.4rem', marginBottom: 4 }}>Cierre de Caja</h1>
+        <p style={{ margin: 0 }}>{format(new Date(), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
         <hr style={{ margin: '12px 0' }} />
+        <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Resumen por método</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: '.9rem' }}>
+          <thead><tr><th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '4px 8px' }}>Método</th><th style={{ textAlign: 'right', borderBottom: '1px solid #ccc', padding: '4px 8px' }}>Cantidad</th><th style={{ textAlign: 'right', borderBottom: '1px solid #ccc', padding: '4px 8px' }}>Total</th></tr></thead>
+          <tbody>
+            {Object.entries(porMetodo).map(([m, v]) => (
+              <tr key={m}><td style={{ padding: '4px 8px' }}>{METODO_LABEL[m] ?? m}</td><td style={{ textAlign: 'right', padding: '4px 8px' }}>{pagosFiltrados.filter(p => p.metodo_pago === m).length}</td><td style={{ textAlign: 'right', padding: '4px 8px' }}>{fmt(v)}</td></tr>
+            ))}
+          </tbody>
+          <tfoot><tr style={{ fontWeight: 700 }}><td style={{ padding: '6px 8px', borderTop: '2px solid #000' }}>TOTAL</td><td style={{ textAlign: 'right', padding: '6px 8px', borderTop: '2px solid #000' }}>{pagosFiltrados.length}</td><td style={{ textAlign: 'right', padding: '6px 8px', borderTop: '2px solid #000' }}>{fmt(total)}</td></tr></tfoot>
+        </table>
+        <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Detalle de cobros</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+          <thead><tr><th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '3px 6px' }}>Hora</th><th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '3px 6px' }}>Paciente</th><th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '3px 6px' }}>Concepto</th><th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '3px 6px' }}>Método</th><th style={{ textAlign: 'right', borderBottom: '1px solid #ccc', padding: '3px 6px' }}>Monto</th></tr></thead>
+          <tbody>
+            {pagosFiltrados.filter(p => !p.anulado).map(p => (
+              <tr key={p.id}><td style={{ padding: '3px 6px' }}>{format(new Date(p.fecha), 'HH:mm')}</td><td style={{ padding: '3px 6px' }}>{p.paciente_nombre ?? '—'}</td><td style={{ padding: '3px 6px' }}>{p.concepto || '—'}</td><td style={{ padding: '3px 6px' }}>{METODO_LABEL[p.metodo_pago] ?? p.metodo_pago}</td><td style={{ textAlign: 'right', padding: '3px 6px' }}>{fmt(p.monto)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <hr style={{ margin: '16px 0' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 40 }}>
+          <div style={{ textAlign: 'center' }}><div style={{ borderTop: '1px solid #000', width: 180, paddingTop: 4, fontSize: '.8rem' }}>Firma profesional</div></div>
+          <div style={{ textAlign: 'right', fontSize: '.85rem' }}>Total del día: <strong>{fmt(total)}</strong></div>
+        </div>
       </div>
 
       {/* Totales resumen */}
@@ -173,16 +219,33 @@ export default function CajaPage() {
         )}
       </div>
 
-      {/* Por método (resumen) */}
+      {/* Tabla desglose por método */}
       {!loading && Object.keys(porMetodo).length > 0 && (
-        <div className="stats-grid no-print" style={{ marginBottom: 20 }}>
-          {Object.entries(porMetodo).map(([m, v]) => (
-            <div key={m} className="stat-card">
-              <div className="stat-label">{METODO_LABEL[m] ?? m}</div>
-              <div className="stat-value" style={{ fontSize: '1.3rem' }}>{fmt(v)}</div>
-              <div className="stat-sub">{total > 0 ? ((v / total) * 100).toFixed(0) : 0}% del total</div>
-            </div>
-          ))}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header no-print"><span className="card-title">Desglose por método de pago</span></div>
+          <div className="table-wrapper">
+            <table className="table" style={{ fontSize: '.85rem' }}>
+              <thead><tr><th>Método</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th><th className="no-print" style={{ textAlign: 'right' }}>% del total</th></tr></thead>
+              <tbody>
+                {Object.entries(porMetodo).sort((a,b) => b[1] - a[1]).map(([m, v]) => (
+                  <tr key={m}>
+                    <td className="td-main">{METODO_LABEL[m] ?? m}</td>
+                    <td style={{ textAlign: 'right' }}>{pagosFiltrados.filter(p => p.metodo_pago === m).length}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(v)}</td>
+                    <td className="no-print" style={{ textAlign: 'right', color: 'var(--c-text-3)' }}>{total > 0 ? ((v / total) * 100).toFixed(0) : 0}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 700, background: 'var(--c-surface-2)' }}>
+                  <td style={{ padding: '10px 16px' }}>TOTAL</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right' }}>{pagosFiltrados.length}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--c-success)' }}>{fmt(total)}</td>
+                  <td className="no-print"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 
@@ -293,6 +356,42 @@ export default function CajaPage() {
         </div>
       )}
 
+      {/* Modal registrar pago a deudor */}
+      {modalPago && pagoDeudor && (
+        <div className="modal-overlay" onClick={() => setModalPago(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Registrar pago — {pagoDeudor.apellido}, {pagoDeudor.nombre}</span>
+              <button className="btn-close" onClick={() => setModalPago(false)}>✕</button>
+            </div>
+            <form onSubmit={handlePagoDeudor}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-group">
+                  <label className="form-label">Monto <span className="req">*</span></label>
+                  <input className="form-input" type="number" min="1" required value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Método</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {[['efectivo','Efectivo'],['transferencia','Transferencia'],['tarjeta_debito','Débito'],['tarjeta_credito','Crédito']].map(([val, lbl]) => (
+                      <button key={val} type="button" className={`btn btn-sm ${pagoForm.metodo_pago === val ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPagoForm(f => ({ ...f, metodo_pago: val }))}>{lbl}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Concepto</label>
+                  <input className="form-input" value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalPago(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-success" disabled={pagoSaving}>{pagoSaving ? 'Registrando...' : 'Registrar pago'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Deudores */}
       {tabCaja === 'deudores' && (
         <div className="card">
@@ -305,7 +404,7 @@ export default function CajaPage() {
           ) : (
             <div className="table-wrapper">
               <table className="table">
-                <thead><tr><th>Paciente</th><th>Obra Social</th><th>Teléfono</th><th style={{ textAlign: 'right' }}>Deuda</th></tr></thead>
+                <thead><tr><th>Paciente</th><th>Obra Social</th><th>Teléfono</th><th style={{ textAlign: 'right' }}>Deuda</th><th></th></tr></thead>
                 <tbody>
                   {deudores.sort((a, b) => (a.saldo ?? 0) - (b.saldo ?? 0)).map(p => (
                     <tr key={p.id}>
@@ -313,6 +412,7 @@ export default function CajaPage() {
                       <td className="text-sm">{p.obra_social || <span className="text-muted">Particular</span>}</td>
                       <td className="text-sm">{p.telefono || '—'}</td>
                       <td style={{ textAlign: 'right' }} className="font-semibold text-danger">{fmt(Math.abs(p.saldo ?? 0))}</td>
+                      <td><button className="btn btn-success btn-sm" onClick={() => openPagoDeudor(p)}>Registrar pago</button></td>
                     </tr>
                   ))}
                 </tbody>

@@ -75,3 +75,12 @@ export async function onRequestPatch({ request, data, env, params }) {
   const updated = await findOne(env.DB, 'insumos', { where: { id, tenant_id: user.sub } })
   return ok(updated)
 }
+
+export async function onRequestDelete({ data, env, params }) {
+  const { user } = data
+  const id = params?.id?.[0]
+  if (!id) return err('ID requerido')
+  const updated = await update(env.DB, 'insumos', id, { activo: 0 }, user.sub)
+  if (!updated) return notFound('Insumo')
+  return ok({ mensaje: 'Insumo desactivado' })
+}
