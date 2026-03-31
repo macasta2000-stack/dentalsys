@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import Odontograma from '../components/Odontograma'
 import { format, addDays } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -31,11 +32,27 @@ const ENFERMEDADES_LIST = [
   { key: 'otras', label: 'Otras (especificar en notas)' },
 ]
 
+// Normalize enfermedades: handles legacy array format ["cardiopatia"] and current object format {cardiopatias: true}
+const ENF_KEY_MAP = { cardiopatia: 'cardiopatias', cardiopatías: 'cardiopatias', hipertensión: 'hipertension' }
+function parseEnfermedades(raw) {
+  try {
+    const parsed = JSON.parse(raw ?? '{}')
+    if (Array.isArray(parsed)) {
+      const obj = {}
+      parsed.forEach(k => { const norm = ENF_KEY_MAP[k] || k; obj[norm] = true })
+      return obj
+    }
+    return (typeof parsed === 'object' && parsed !== null) ? parsed : {}
+  } catch { return {} }
+}
+
 const INDICACIONES_TEMPLATES = {
   extraccion: `INDICACIONES POST-EXTRACCIÓN\n\n1. Morder la gasa durante 30 minutos. Si hay sangrado, reemplazar con gasa limpia.\n2. NO enjuagarse la boca durante las primeras 24 horas.\n3. Aplicar hielo en la zona (20 min con hielo, 20 min sin hielo) las primeras 6 horas.\n4. Dieta blanda y fría las primeras 24 horas. Evitar alimentos calientes, duros o picantes.\n5. NO fumar ni consumir alcohol durante las primeras 48 horas.\n6. Tomar la medicación indicada según lo prescrito.\n7. Evitar esfuerzo físico intenso durante 24 horas.\n8. Si el sangrado no cede, hay dolor intenso o fiebre, comunicarse con el consultorio.`,
   cirugia: `INDICACIONES POST-OPERATORIAS\n\n1. Morder la gasa durante 1 hora. Reemplazar si hay sangrado activo.\n2. Aplicar hielo en la zona durante las primeras 48 horas (20 min con hielo, 20 min sin).\n3. Dieta líquida y blanda las primeras 48 horas. NO alimentos calientes, duros ni picantes.\n4. NO escupir, NO hacer buches ni aspirar por bombilla durante 3 días.\n5. NO fumar ni consumir alcohol durante al menos 72 horas.\n6. Tomar la medicación recetada en los horarios indicados. No interrumpir el antibiótico.\n7. Cepillar con cuidado evitando la zona operada durante 3–5 días.\n8. Evitar esfuerzo físico durante 24–48 horas.\n9. Puede haber hinchazón las primeras 48 horas, es normal.\n10. Si hay fiebre >38°C, sangrado persistente o mal olor, comunicarse urgente con el consultorio.`,
-  blanqueamiento: `INDICACIONES POST-BLANQUEAMIENTO\n\n1. Evitar alimentos y bebidas que manchen durante 48 horas:\n   - Evitar: café, té, vino tinto, mate, gaseosas oscuras, salsas con tomate.\n   - Permitido: arroz, pollo, queso blanco, papa, pera, agua.\n2. Es normal sentir sensibilidad dental 24–48 horas. Es temporaria.\n3. Si hay sensibilidad, puede tomar ibuprofeno o paracetamol según indicación.\n4. NO fumar durante las primeras 48 horas.\n5. Cepillado suave con pasta para dientes sensibles los primeros días.\n6. Evitar alimentos/bebidas muy calientes o muy frías durante 24–48 horas.\n7. El resultado final se aprecia a las 2–3 semanas.\n8. Para mantener el resultado: buena higiene, evitar hábitos que manchen, controles periódicos.`,
+  blanqueamiento: `INDICACIONES POST-BLANQUEAMIENTO\n\n1. Evitar alimentos y bebidas que manchen durante 48 horas:\n   - Evitar: café, té, vino tinto, mate, gaseosas oscuras, salsas con tomate.\n   - Permitido: arroz, pollo, queso blanco, papa, pera, agua.\n2. Es normal sentir sensibilidad 24–48 horas. Es temporaria.\n3. Si hay sensibilidad, puede tomar ibuprofeno o paracetamol según indicación.\n4. NO fumar durante las primeras 48 horas.\n5. Cepillado suave con pasta para sensibles los primeros días.\n6. Evitar alimentos/bebidas muy calientes o muy frías durante 24–48 horas.\n7. El resultado final se aprecia a las 2–3 semanas.\n8. Para mantener el resultado: buena higiene, evitar hábitos que manchen, controles periódicos.`,
 }
+
+const METODO_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Tarjeta Débito', tarjeta_credito: 'Tarjeta Crédito', obra_social: 'Obra Social', cheque: 'Cheque', mercadopago: 'MercadoPago', otro: 'Otro' }
 
 function fmt(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n ?? 0)
@@ -48,8 +65,15 @@ function calcEdad(fn) {
 export default function PacienteDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { configuracion } = useAuth()
-  const [tab, setTab] = useState('hc')
+  const { configuracion, user } = useAuth()
+  const addToast = useToast()
+  const [tab, setTab] = useState(() => user?.rol === 'recepcionista' ? 'turnos' : 'hc')
+
+  // Adjuntos (agrupados por evolucion_id en el frontend)
+  const [adjuntos, setAdjuntos] = useState([])
+  // Upload desde modal evolución
+  const [evolAdjFile, setEvolAdjFile] = useState(null)
+  const [evolAdjUploading, setEvolAdjUploading] = useState(false)
   const [paciente, setPaciente] = useState(null)
   const [piezas, setPiezas] = useState({})
   const [evoluciones, setEvoluciones] = useState([])
@@ -59,6 +83,7 @@ export default function PacienteDetailPage() {
   const [prestaciones, setPrestaciones] = useState([])
   const [anamnesis, setAnamnesis] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   // Edición de paciente
   const [editPaciente, setEditPaciente] = useState(false)
@@ -73,7 +98,7 @@ export default function PacienteDetailPage() {
   // Modal evolución
   const [modalEvol, setModalEvol] = useState(false)
   const [editEvol, setEditEvol] = useState(null) // evolución que se edita
-  const [evolForm, setEvolForm] = useState({ descripcion: '', prestacion_id: '', monto: '', piezas_tratadas: '' })
+  const [evolForm, setEvolForm] = useState({ descripcion: '', prestacion_nombre: '', monto: '', piezas_tratadas: '' })
 
   // Modal pago
   const [modalPago, setModalPago] = useState(false)
@@ -82,7 +107,7 @@ export default function PacienteDetailPage() {
   // Modal turno (desde ficha)
   const [modalTurno, setModalTurno] = useState(false)
   const [editTurno, setEditTurno] = useState(null)
-  const [turnoForm, setTurnoForm] = useState({ fecha_hora: '', duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '' })
+  const [turnoForm, setTurnoForm] = useState({ fecha_hora: '', duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '', sesiones_autorizadas: '' })
 
   // Modal cobro (turno completado)
   const [modalCobro, setModalCobro] = useState(false)
@@ -111,6 +136,10 @@ export default function PacienteDetailPage() {
   // Receta
   const [modalReceta, setModalReceta] = useState(false)
   const [recetaMeds, setRecetaMeds] = useState([{ medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
+  const [recetaIndicaciones, setRecetaIndicaciones] = useState('')
+  const [recetaSaving, setRecetaSaving] = useState(false)
+  const [recetaProfesional, setRecetaProfesional] = useState(null) // profesional seleccionado para firma
+  const [colaboradoresAll, setColaboradoresAll] = useState([])
 
   // Indicaciones post-operatorias
   const [modalIndicaciones, setModalIndicaciones] = useState(false)
@@ -118,14 +147,55 @@ export default function PacienteDetailPage() {
   const [indicacionesTexto, setIndicacionesTexto] = useState('')
 
   const [saving, setSaving] = useState(false)
+  const [modalConfirm, setModalConfirm] = useState(null) // { msg, onConfirm, danger? }
+
+  // NPS survey
+  const [showNPS, setShowNPS] = useState(null) // turno cobrado
+
+  // Planes de pago
+  const [planesPago, setPlanesPago] = useState([])
+  const [planesCuotas, setPlanesCuotas] = useState({}) // planId → cuotas[]
+  const [modalPlan, setModalPlan] = useState(false)
+  const [planForm, setPlanForm] = useState({ concepto: '', monto_total: '', cuotas: 3, fecha_inicio: '' })
+  const [planSaving, setPlanSaving] = useState(false)
+  const [planError, setPlanError] = useState('')
 
   useEffect(() => { loadAll() }, [id])
 
+  useEffect(() => {
+    if (tab !== 'cuotas') return
+    planesPago.filter(p => p.estado === 'activo').forEach(plan => {
+      if (planesCuotas[plan.id]) return
+      api.planesPago.get(plan.id).then(full => {
+        setPlanesCuotas(prev => ({ ...prev, [plan.id]: full?.cuotas ?? [] }))
+      }).catch(() => {})
+    })
+  }, [tab, planesPago])
+
   async function loadAll() {
     setLoading(true)
+    setLoadError(null)
+    // 8-second timeout safety net
+    const withTimeout = (promise, ms = 8000) => {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Tiempo de espera agotado. Verificá tu conexión.')), ms)
+      )
+      return Promise.race([promise, timeout])
+    }
+    // Fetch patient with Cache-Control: no-cache to bypass stale SW cache
+    const token = localStorage.getItem('ds_token')
+    const pacientePromise = fetch(`/api/pacientes/${id}`, {
+      headers: { 'Authorization': token ? `Bearer ${token}` : '', 'Cache-Control': 'no-cache' },
+    }).then(async r => {
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error ?? `Error ${r.status}`)
+      return d?.data ?? d
+    })
     try {
+      const pacienteData = await withTimeout(pacientePromise)
+      if (!pacienteData || pacienteData.error) throw new Error(pacienteData?.error ?? 'Paciente no encontrado')
       const results = await Promise.allSettled([
-        api.pacientes.get(id),
+        Promise.resolve(pacienteData),
         api.odontograma.get(id),
         api.evoluciones.list(id),
         api.pagos.list({ paciente_id: id }),
@@ -133,6 +203,7 @@ export default function PacienteDetailPage() {
         api.turnos.list({ paciente_id: id }),
         api.prestaciones.list(),
         api.anamnesis.get(id),
+        api.planesPago.list(id),
       ])
       const val = (i) => results[i].status === 'fulfilled' ? results[i].value : null
       const pac = val(0)
@@ -156,6 +227,7 @@ export default function PacienteDetailPage() {
       setPresupuestos(val(4) ?? [])
       setTurnos(val(5) ?? [])
       setPrestaciones(val(6) ?? [])
+      setPlanesPago(val(8) ?? [])
       const anam = val(7)
       setAnamnesis(anam)
       if (anam) {
@@ -186,6 +258,9 @@ export default function PacienteDetailPage() {
           firma_fecha: anam.firma_fecha ?? '',
         })
       }
+      api.adjuntos.list(id).then(setAdjuntos).catch(() => {})
+    } catch (err) {
+      setLoadError(err.message || 'No se pudo cargar la ficha del paciente.')
     } finally { setLoading(false) }
   }
 
@@ -212,7 +287,8 @@ export default function PacienteDetailPage() {
       const updated = await api.pacientes.update(id, editForm)
       setPaciente(p => ({ ...p, ...updated }))
       setEditPaciente(false)
-    } catch (err) { alert('No se pudo guardar el paciente. Nombre y apellido son obligatorios.') }
+      addToast('Datos del paciente actualizados', 'success')
+    } catch (err) { addToast('No se pudo guardar el paciente. Nombre y apellido son obligatorios.', 'error') }
     finally { setEditSaving(false) }
   }
 
@@ -220,33 +296,55 @@ export default function PacienteDetailPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const prestacion = prestaciones.find(p => p.id === evolForm.prestacion_id)
       const payload = {
         paciente_id: id,
         descripcion: evolForm.descripcion,
-        prestacion_id: evolForm.prestacion_id || null,
-        prestacion_nombre: prestacion?.nombre ?? null,
+        prestacion_id: null,
+        prestacion_nombre: evolForm.prestacion_nombre || null,
         monto: Number(evolForm.monto) || 0,
         piezas_tratadas: JSON.stringify(evolForm.piezas_tratadas ? evolForm.piezas_tratadas.split(',').map(x => parseInt(x.trim())).filter(Boolean) : []),
       }
+      let evolId = editEvol?.id
       if (editEvol) {
         const updated = await api.evoluciones.update(editEvol.id, payload)
         setEvoluciones(prev => prev.map(ev => ev.id === editEvol.id ? { ...ev, ...updated } : ev))
+        addToast('Evolución actualizada', 'success')
       } else {
         const ev = await api.evoluciones.create(payload)
+        evolId = ev.id
         setEvoluciones(prev => [ev, ...prev])
+        addToast('Evolución registrada', 'success')
+      }
+      // Subir archivo adjunto si hay uno seleccionado
+      if (evolAdjFile && evolId) {
+        setEvolAdjUploading(true)
+        try {
+          const fd = new FormData()
+          fd.append('file', evolAdjFile)
+          fd.append('paciente_id', String(id))
+          fd.append('evolucion_id', String(evolId))
+          const nuevoAdj = await api.adjuntos.upload(fd)
+          setAdjuntos(prev => [nuevoAdj, ...prev])
+          addToast('Archivo adjuntado', 'success')
+        } catch (e) {
+          addToast(e.message ?? 'Error al subir archivo', 'error')
+        } finally {
+          setEvolAdjUploading(false)
+          setEvolAdjFile(null)
+        }
       }
       setModalEvol(false)
       setEditEvol(null)
-      setEvolForm({ descripcion: '', prestacion_id: '', monto: '', piezas_tratadas: '' })
+      setEvolForm({ descripcion: '', prestacion_nombre: '', monto: '', piezas_tratadas: '' })
     } finally { setSaving(false) }
   }
 
   function openEditEvol(ev) {
+    setEvolAdjFile(null)
     setEditEvol(ev)
     setEvolForm({
       descripcion: ev.descripcion,
-      prestacion_id: ev.prestacion_id ?? '',
+      prestacion_nombre: ev.prestacion_nombre ?? '',
       monto: ev.monto ? String(ev.monto) : '',
       piezas_tratadas: (() => { try { return (JSON.parse(ev.piezas_tratadas) || []).join(', ') } catch { return '' } })(),
     })
@@ -269,7 +367,7 @@ export default function PacienteDetailPage() {
       }
       const p = await api.pagos.create(pagoData)
       setPagos(prev => [p, ...prev])
-      setPaciente(pac => ({ ...pac, saldo: (pac.saldo || 0) + Number(pagoForm.monto) }))
+      setPaciente(pac => ({ ...pac, saldo: (pac.saldo ?? 0) + Number(pagoForm.monto) }))
       setModalPago(false)
       setPagoForm({ monto: '', metodo_pago: 'efectivo', concepto: '', monto_os: 0, monto_copago: 0 })
     } finally { setSaving(false) }
@@ -281,7 +379,7 @@ export default function PacienteDetailPage() {
     const now = new Date()
     now.setMinutes(0, 0, 0)
     now.setHours(now.getHours() + 1)
-    setTurnoForm({ fecha_hora: format(now, "yyyy-MM-dd'T'HH:mm"), duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '' })
+    setTurnoForm({ fecha_hora: format(now, "yyyy-MM-dd'T'HH:mm"), duracion_minutos: 60, motivo: '', prestacion_id: '', estado: 'programado', notas: '', sesiones_autorizadas: '' })
     setModalTurno(true)
   }
 
@@ -294,6 +392,7 @@ export default function PacienteDetailPage() {
       prestacion_id: t.prestacion_id ?? '',
       estado: t.estado,
       notas: t.notas ?? '',
+      sesiones_autorizadas: t.sesiones_autorizadas ?? '',
     })
     setModalTurno(true)
   }
@@ -331,9 +430,20 @@ export default function PacienteDetailPage() {
       }
       const p = await api.pagos.create(pagoData)
       setPagos(prev => [p, ...prev])
-      setPaciente(pac => ({ ...pac, saldo: (pac.saldo || 0) + Number(cobroForm.monto) }))
+      setPaciente(pac => ({ ...pac, saldo: (pac.saldo ?? 0) + Number(cobroForm.monto) }))
+      addToast('Pago registrado correctamente', 'success')
+      // Auto-completar turno si estaba en presente
+      if (turnoACobrar.estado === 'presente') {
+        const upd = await api.turnos.update(turnoACobrar.id, { estado: 'completado' }).catch(() => null)
+        if (upd) setTurnos(prev => prev.map(t => t.id === turnoACobrar.id ? { ...t, ...upd } : t))
+      }
       setModalCobro(false)
-      setTurnoACobrar(null)
+      // Ofrecer encuesta NPS por WhatsApp si tiene teléfono
+      if (paciente?.telefono) {
+        setShowNPS(turnoACobrar)
+      } else {
+        setTurnoACobrar(null)
+      }
     } catch (err) { setCobroError('No se pudo registrar el pago. Verificá que el monto sea mayor a cero.') }
     finally { setCobroSaving(false) }
   }
@@ -348,6 +458,7 @@ export default function PacienteDetailPage() {
         const updated = await api.turnos.update(editTurno.id, payload)
         setTurnos(prev => prev.map(t => t.id === editTurno.id ? { ...t, ...updated } : t))
         setModalTurno(false)
+        addToast('Turno actualizado', 'success')
         // Si se marcó como completado, abrir modal cobro
         if (payload.estado === 'completado' && editTurno.estado !== 'completado') {
           openCobro({ ...editTurno, ...updated })
@@ -356,16 +467,22 @@ export default function PacienteDetailPage() {
         const created = await api.turnos.create(payload)
         setTurnos(prev => [created, ...prev])
         setModalTurno(false)
+        addToast('Turno creado', 'success')
       }
-    } catch (err) { alert('No se pudo guardar el turno. Verificá que la fecha/hora sean válidas.') }
+    } catch (err) { addToast('No se pudo guardar el turno. Verificá que la fecha/hora sean válidas.', 'error') }
     finally { setSaving(false) }
   }
 
   async function handleCancelTurno(turnoId) {
-    if (!confirm('¿Cancelar este turno?')) return
-    await api.turnos.cancel(turnoId)
-    setTurnos(prev => prev.map(t => t.id === turnoId ? { ...t, estado: 'cancelado' } : t))
-    setModalTurno(false)
+    setModalConfirm({
+      msg: '¿Cancelar este turno?',
+      onConfirm: async () => {
+        await api.turnos.cancel(turnoId)
+        setTurnos(prev => prev.map(t => t.id === turnoId ? { ...t, estado: 'cancelado' } : t))
+        setModalTurno(false)
+        addToast('Turno cancelado', 'info')
+      }
+    })
   }
 
   // Anamnesis
@@ -391,7 +508,7 @@ export default function PacienteDetailPage() {
       })
       setAnamnesis(result)
       setEditAnamnesis(false)
-    } catch (err) { alert('No se pudo guardar la anamnesis. Intentá nuevamente.') }
+    } catch (err) { addToast('No se pudo guardar la anamnesis. Intentá nuevamente.', 'error') }
     finally { setSaving(false) }
   }
 
@@ -442,7 +559,7 @@ export default function PacienteDetailPage() {
       })))
       setPresupuestoForm({ notas: data.notas ?? '', fecha_vencimiento: data.fecha_vencimiento ?? '' })
       setModalPresupuesto(true)
-    } catch (e) { alert(e.message) }
+    } catch (e) { addToast(e.message, 'error') }
   }
 
   function addPresupuestoItem() {
@@ -462,7 +579,7 @@ export default function PacienteDetailPage() {
   async function handlePresupuestoSave(e) {
     e.preventDefault()
     const items = presupuestoItems.filter(i => i.descripcion.trim())
-    if (!items.length) { alert('Agregar al menos un ítem con descripción'); return }
+    if (!items.length) { addToast('Agregá al menos un ítem con descripción', 'warning'); return }
     setPresupuestoSaving(true)
     try {
       const payload = {
@@ -493,7 +610,7 @@ export default function PacienteDetailPage() {
         setPresupuestos(prev => [created, ...prev])
       }
       setModalPresupuesto(false)
-    } catch (err) { alert(`No se pudo guardar el presupuesto. ${err.message}`) }
+    } catch (err) { addToast(`No se pudo guardar el presupuesto. ${err.message}`, 'error') }
     finally { setPresupuestoSaving(false) }
   }
 
@@ -502,6 +619,17 @@ export default function PacienteDetailPage() {
   }
 
   // Receta
+  function openReceta() {
+    setRecetaMeds([{ medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
+    setRecetaIndicaciones('')
+    setRecetaProfesional(null)
+    // Cargar colaboradores profesionales para elegir quién firma
+    api.colaboradores.list().then(cols => {
+      setColaboradoresAll((cols ?? []).filter(c => c.rol === 'profesional' && c.activo !== 0))
+    }).catch(() => {})
+    setModalReceta(true)
+  }
+
   function addMedReceta() {
     setRecetaMeds(m => [...m, { medicamento: '', concentracion: '', forma: '', dosis: '', posologia: '', cantidad: '', dias: '' }])
   }
@@ -514,7 +642,27 @@ export default function PacienteDetailPage() {
     setRecetaMeds(ms => ms.filter((_, i) => i !== idx))
   }
 
-  function printReceta() {
+  async function guardarEImprimirReceta() {
+    // Guardar en DB antes de imprimir
+    const medsValidos = recetaMeds.filter(m => m.medicamento.trim())
+    if (medsValidos.length > 0) {
+      setRecetaSaving(true)
+      try {
+        const prof = recetaProfesional
+        await api.recetas.create({
+          paciente_id: id,
+          medicamentos: medsValidos,
+          indicaciones: recetaIndicaciones,
+          profesional_nombre: prof ? `${prof.nombre} ${prof.apellido ?? ''}`.trim() : configuracion?.nombre_profesional,
+          profesional_matricula: prof ? prof.matricula ?? '' : configuracion?.matricula,
+        })
+        addToast('Receta guardada en el historial del paciente', 'success')
+      } catch (e) {
+        addToast('No se pudo guardar la receta, pero podés imprimirla igual', 'warning')
+      } finally {
+        setRecetaSaving(false)
+      }
+    }
     window.print()
   }
 
@@ -539,7 +687,7 @@ export default function PacienteDetailPage() {
       for (const item of items) {
         await api.turnos.create({
           paciente_id: id,
-          fecha_hora: fecha.toISOString(),
+          fecha_hora: format(fecha, "yyyy-MM-dd'T'HH:mm"),
           duracion_minutos: 60,
           motivo: item.descripcion,
           estado: 'programado',
@@ -551,11 +699,27 @@ export default function PacienteDetailPage() {
       setModalGenTurnos(false)
       setPresupAprobado(null)
       setTab('turnos')
-    } catch (err) { alert('No se pudieron crear todos los turnos. Intentá nuevamente.') }
+    } catch (err) { addToast('No se pudieron crear todos los turnos. Intentá nuevamente.', 'error') }
     finally { setGenTurnosSaving(false) }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', paddingTop: 60 }}><span className="spinner" /></div>
+  if (loading) return (
+    <div style={{ textAlign: 'center', paddingTop: 60 }}>
+      <span className="spinner" style={{ width: 40, height: 40 }} />
+      <div style={{ marginTop: 16, color: 'var(--c-text-3)', fontSize: '.9rem' }}>Cargando ficha del paciente...</div>
+    </div>
+  )
+  if (loadError) return (
+    <div className="empty-state" style={{ paddingTop: 60 }}>
+      <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>⚠️</div>
+      <div className="empty-title" style={{ color: 'var(--c-danger)' }}>Error al cargar la ficha</div>
+      <div className="empty-sub" style={{ marginBottom: 20 }}>{loadError}</div>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+        <button className="btn btn-primary" onClick={loadAll}>Reintentar</button>
+        <button className="btn btn-ghost" onClick={() => navigate('/pacientes')}>← Volver a pacientes</button>
+      </div>
+    </div>
+  )
   if (!paciente) return <div className="empty-state"><div className="empty-title">Paciente no encontrado</div><button className="btn btn-ghost" onClick={() => navigate('/pacientes')}>← Volver</button></div>
 
   const totalPagado = pagos.reduce((s, p) => s + Number(p.monto), 0)
@@ -563,15 +727,61 @@ export default function PacienteDetailPage() {
   // Alerta anamnesis
   const anamnesisAlerta = (() => {
     if (!anamnesis) return false
-    let enf = {}
-    try { enf = JSON.parse(anamnesis.enfermedades ?? '{}') } catch {}
+    const enf = parseEnfermedades(anamnesis.enfermedades)
     return Object.values(enf).some(Boolean) || !!anamnesis.anticoagulantes || !!anamnesis.marcapasos
   })()
 
   return (
     <div>
       {/* CSS de impresión para recetas, presupuestos e indicaciones */}
-      <style>{`@media print { body > * { display: none; } .receta-print { display: block !important; } .presupuesto-print { display: block !important; } .indicaciones-print { display: block !important; } .modal-overlay { position: static !important; background: none !important; padding: 0 !important; } .modal { box-shadow: none !important; max-height: none !important; } .modal-footer { display: none !important; } }`}</style>
+      <style>{`
+        @media print {
+          /* CORRECTO: visibility:hidden permite que hijos sean visibility:visible */
+          /* display:none en un padre NO puede ser sobreescrito por hijos — ese era el bug */
+          body * { visibility: hidden !important; }
+
+          /* Mostrar solo el contenido del área de impresión activa */
+          .receta-print, .receta-print * { visibility: visible !important; }
+          .presupuesto-print, .presupuesto-print * { visibility: visible !important; }
+          .indicaciones-print, .indicaciones-print * { visibility: visible !important; }
+
+          /* Posicionar el modal como si fuera la página */
+          .receta-print,
+          .presupuesto-print,
+          .indicaciones-print {
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important;
+            background: white !important;
+            z-index: 99999 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 28px 36px !important;
+          }
+
+          /* Ocultar controles de UI: footer, close, botones de tipo */
+          .modal-footer { visibility: hidden !important; height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+          .btn-close { visibility: hidden !important; }
+          .indicaciones-tipo-selector { visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+          .indicaciones-tipo-selector * { visibility: hidden !important; }
+          .indicaciones-form-label { visibility: hidden !important; height: 0 !important; margin: 0 !important; }
+
+          /* Textarea: mostrar como bloque de texto */
+          .indicaciones-print textarea {
+            border: none !important;
+            resize: none !important;
+            outline: none !important;
+            background: transparent !important;
+            font-family: Arial, sans-serif !important;
+            font-size: 0.9rem !important;
+          }
+
+          /* Limpiar el modal overlay */
+          .modal-overlay { background: none !important; }
+        }
+      `}</style>
 
       {/* Banner alerta anamnesis */}
       {anamnesisAlerta && (
@@ -593,7 +803,7 @@ export default function PacienteDetailPage() {
             {paciente.telefono && <span className="pd-meta-item">{paciente.telefono}</span>}
             {paciente.obra_social && <span className="pd-meta-item"><span className="badge badge-info">{paciente.obra_social}</span></span>}
             <span className="pd-meta-item">Total pagado: <strong>{fmt(totalPagado)}</strong></span>
-            {paciente.saldo < 0 && <span className="pd-meta-item"><span className="badge badge-danger">Deuda: {fmt(Math.abs(paciente.saldo))}</span></span>}
+            {paciente.saldo < 0 && <span className="pd-meta-item"><span className="badge badge-danger" style={{ fontSize: '.85rem', padding: '3px 10px' }}>Debe {fmt(Math.abs(paciente.saldo))}</span></span>}
           </div>
           {paciente.notas && <div className="text-sm text-muted mt-1">{paciente.notas}</div>}
         </div>
@@ -606,22 +816,33 @@ export default function PacienteDetailPage() {
               WhatsApp
             </a>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => setModalReceta(true)}>Nueva receta</button>
+          {user?.rol !== 'recepcionista' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => openReceta()}>Nueva receta</button>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={() => openIndicaciones('extraccion')}>Indicaciones</button>
           <button className="btn btn-secondary btn-sm" onClick={() => setModalPago(true)}>+ Pago</button>
-          <button className="btn btn-primary btn-sm" onClick={() => setModalEvol(true)}>+ Evolución</button>
+          {user?.rol !== 'recepcionista' && (
+            <button className="btn btn-primary btn-sm" onClick={() => setModalEvol(true)}>+ Evolución</button>
+          )}
         </div>
       </div>
 
       {/* Barra de info rápida */}
       {(() => {
         const ahora = new Date()
-        const ultTurno = [...turnos].filter(t => t.estado === 'completado').sort((a,b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))[0]
+        const turnosCompletados = turnos.filter(t => t.estado === 'completado')
+        const ultTurno = [...turnosCompletados].sort((a,b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))[0]
         const proxTurno = [...turnos].filter(t => new Date(t.fecha_hora) > ahora && !['cancelado','ausente'].includes(t.estado)).sort((a,b) => new Date(a.fecha_hora) - new Date(b.fecha_hora))[0]
         const ultEvol = evoluciones[0]
-        if (!ultTurno && !proxTurno && !ultEvol && !(paciente.saldo < 0)) return null
+        if (!ultTurno && !proxTurno && !ultEvol && !(paciente.saldo < 0) && turnosCompletados.length === 0) return null
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, marginBottom: 12, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+            {turnosCompletados.length > 0 && (
+              <div style={{ padding: '8px 16px', borderRight: '1px solid var(--c-border)', fontSize: '.78rem' }}>
+                <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Visitas totales</div>
+                <div style={{ color: 'var(--c-text)', fontWeight: 700, marginTop: 2, fontSize: '.9rem' }}>{turnosCompletados.length}</div>
+              </div>
+            )}
             {ultTurno && (
               <div style={{ padding: '8px 16px', borderRight: '1px solid var(--c-border)', fontSize: '.78rem' }}>
                 <div style={{ color: 'var(--c-text-3)', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Último turno</div>
@@ -651,20 +872,30 @@ export default function PacienteDetailPage() {
       })()}
 
       {/* Tabs */}
-      <div className="tabs">
-        {[['hc','Historia Clínica'], ['anamnesis','Anamnesis'], ['odontograma','Odontograma'], ['turnos','Turnos'], ['presupuestos','Presupuestos'], ['pagos','Pagos']].map(([k,l]) => (
-          <button key={k} className={`tab-btn${tab === k ? ' active' : ''}`} onClick={() => setTab(k)}>{l}</button>
-        ))}
-      </div>
+      {(() => {
+        const isDental = /odontol/i.test(configuracion?.especialidad ?? '')
+        const isRecep = user?.rol === 'recepcionista'
+        const tabs = [
+          ...(!isRecep ? [['hc','Historia Clínica'], ['anamnesis','Anamnesis']] : []),
+          ...(isDental ? [['odontograma','Diagrama']] : []),
+          ['turnos','Turnos'], ['presupuestos','Presupuestos'], ['pagos','Pagos'], ['cuotas','Planes de pago']
+        ]
+        return (
+          <div className="tabs">
+            {tabs.map(([k,l]) => (
+              <button key={k} className={`tab-btn${tab === k ? ' active' : ''}`} onClick={() => setTab(k)}>{l}</button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* HISTORIA CLÍNICA */}
       {tab === 'hc' && (
         <div>
           {/* Resumen anamnesis en HC */}
           {anamnesis && (() => {
-            let enf = {}
+            const enf = parseEnfermedades(anamnesis.enfermedades)
             let alg = {}
-            try { enf = JSON.parse(anamnesis.enfermedades ?? '{}') } catch {}
             try { alg = JSON.parse(anamnesis.alergias ?? '{}') } catch {}
             const enfsActivas = ENFERMEDADES_LIST.filter(e => enf[e.key]).map(e => e.label)
             const tieneCondiciones = enfsActivas.length > 0 || anamnesis.anticoagulantes || anamnesis.marcapasos
@@ -684,10 +915,12 @@ export default function PacienteDetailPage() {
               </div>
             )
           })()}
-          <div className="page-actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => setModalReceta(true)}>Nueva Receta</button>
-            <button className="btn btn-primary btn-sm" onClick={() => { setEditEvol(null); setEvolForm({ descripcion: '', prestacion_id: '', monto: '', piezas_tratadas: '' }); setModalEvol(true) }}>+ Agregar evolución</button>
-          </div>
+          {user?.rol !== 'recepcionista' && (
+            <div className="page-actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setModalReceta(true)}>Nueva Receta</button>
+              <button className="btn btn-primary btn-sm" onClick={() => { setEditEvol(null); setEvolForm({ descripcion: '', prestacion_nombre: '', monto: '', piezas_tratadas: '' }); setEvolAdjFile(null); setModalEvol(true) }}>+ Agregar evolución</button>
+            </div>
+          )}
           {evoluciones.length === 0 ? (
             <div className="empty-state"><div className="empty-icon">📋</div><div className="empty-title">Sin evoluciones registradas</div></div>
           ) : (
@@ -699,14 +932,47 @@ export default function PacienteDetailPage() {
                       <span className="text-sm text-muted">{format(new Date(ev.fecha), "d 'de' MMMM yyyy, HH:mm", { locale: es })}</span>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {ev.monto > 0 && <span className="badge badge-success">{fmt(ev.monto)}</span>}
-                        <button className="btn btn-ghost btn-sm" onClick={() => openEditEvol(ev)}>Editar</button>
+                        {user?.rol !== 'recepcionista' && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => openEditEvol(ev)}>Editar</button>
+                        )}
                       </div>
                     </div>
                     {ev.prestacion_nombre && <div className="text-sm" style={{ color: 'var(--c-primary)', fontWeight: 600, marginBottom: 4 }}>{ev.prestacion_nombre}</div>}
                     <div style={{ fontSize: '.9rem' }}>{ev.descripcion}</div>
-                    {ev.piezas_tratadas && ev.piezas_tratadas !== '[]' && (
+                    {/odontol/i.test(configuracion?.especialidad ?? '') && ev.piezas_tratadas && ev.piezas_tratadas !== '[]' && (
                       <div className="text-xs text-muted mt-1">Piezas: {ev.piezas_tratadas}</div>
                     )}
+                    {/* Archivos adjuntos de esta evolución */}
+                    {(() => {
+                      const archivos = adjuntos.filter(a => String(a.evolucion_id) === String(ev.id))
+                      if (archivos.length === 0) return null
+                      return (
+                        <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {archivos.map(adj => {
+                            const isImage = adj.tipo_mime?.startsWith('image/')
+                            const isPdf = adj.tipo_mime === 'application/pdf'
+                            const icon = isImage ? '🖼️' : isPdf ? '📄' : '📎'
+                            return (
+                              <button key={adj.id} className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '.78rem', border: '1px solid var(--c-border)' }}
+                                onClick={async () => {
+                                  try {
+                                    const blob = await api.adjuntos.getBlob(adj.id)
+                                    const url = URL.createObjectURL(blob)
+                                    const a = document.createElement('a')
+                                    a.href = url; a.target = '_blank'; a.rel = 'noopener'
+                                    if (!isImage && !isPdf) a.download = adj.nombre_archivo
+                                    a.click()
+                                    setTimeout(() => URL.revokeObjectURL(url), 5000)
+                                  } catch { addToast('No se pudo abrir el archivo', 'error') }
+                                }}>
+                                {icon} {adj.nombre_archivo}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               ))}
@@ -720,9 +986,11 @@ export default function PacienteDetailPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Anamnesis / Historia Médica</span>
-            <button className="btn btn-primary btn-sm" onClick={() => setEditAnamnesis(true)}>
-              {anamnesis ? 'Editar' : 'Completar anamnesis'}
-            </button>
+            {user?.rol !== 'recepcionista' && (
+              <button className="btn btn-primary btn-sm" onClick={() => setEditAnamnesis(true)}>
+                {anamnesis ? 'Editar' : 'Completar anamnesis'}
+              </button>
+            )}
           </div>
           {!anamnesis && !editAnamnesis ? (
             <div className="empty-state"><div className="empty-icon">📋</div><div className="empty-title">Sin anamnesis registrada</div></div>
@@ -730,8 +998,7 @@ export default function PacienteDetailPage() {
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {anamnesis.motivo_consulta && <div><strong>Motivo de consulta:</strong> <span>{anamnesis.motivo_consulta}</span></div>}
               {(() => {
-                let enf = {}
-                try { enf = JSON.parse(anamnesis.enfermedades ?? '{}') } catch {}
+                const enf = parseEnfermedades(anamnesis.enfermedades)
                 const activas = ENFERMEDADES_LIST.filter(e => enf[e.key])
                 if (!activas.length) return null
                 return <div><strong>Enfermedades sistémicas:</strong> {activas.map(e => <span key={e.key} className="badge badge-warning" style={{ marginLeft: 4 }}>{e.label}</span>)}</div>
@@ -742,14 +1009,28 @@ export default function PacienteDetailPage() {
                 if (!med.length) return null
                 return <div><strong>Medicación:</strong> {med.join(', ')}</div>
               })()}
-              {anamnesis.alergias && <div><strong>Alergias:</strong> {anamnesis.alergias}</div>}
+              {(() => {
+                let alerList = {}
+                try { alerList = JSON.parse(anamnesis.alergias ?? '{}') } catch {}
+                const alerDisplay = [
+                  alerList.penicilina && 'Penicilina',
+                  alerList.aspirina && 'Aspirina',
+                  alerList.latex && 'Látex',
+                  alerList.yodo && 'Yodo',
+                  alerList._otras && alerList._otras,
+                ].filter(Boolean).join(', ') || (
+                  typeof alerList === 'string' ? alerList : null
+                )
+                if (!alerDisplay) return null
+                return <div><strong>Alergias:</strong> {alerDisplay}</div>
+              })()}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 {!!anamnesis.embarazada && <span className="badge badge-warning">Embarazada</span>}
                 {!!anamnesis.fumador && <span className="badge badge-warning">Fumador/a</span>}
                 {!!anamnesis.anticoagulantes && <span className="badge badge-danger">Anticoagulantes</span>}
               </div>
               {anamnesis.cirugias_previas && <div><strong>Cirugías previas:</strong> {anamnesis.cirugias_previas}</div>}
-              {anamnesis.antecedentes_odontologicos && <div><strong>Antecedentes odontológicos:</strong> {anamnesis.antecedentes_odontologicos}</div>}
+              {anamnesis.antecedentes_odontologicos && <div><strong>Antecedentes clínicos:</strong> {anamnesis.antecedentes_odontologicos}</div>}
               {anamnesis.firma_fecha && <div className="text-sm text-muted">Fecha de firma: {anamnesis.firma_fecha}</div>}
             </div>
           ) : null}
@@ -781,7 +1062,7 @@ export default function PacienteDetailPage() {
                   <label className="form-label">Medicación actual</label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input className="form-input" value={medicacionInput} onChange={e => setMedicacionInput(e.target.value)}
-                      placeholder="Nombre del medicamento" onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addMedicacion())} />
+                      placeholder="" onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addMedicacion())} />
                     <button type="button" className="btn btn-secondary btn-sm" onClick={addMedicacion}>Agregar</button>
                   </div>
                   {anamnesisForm.medicacion.length > 0 && (
@@ -807,7 +1088,7 @@ export default function PacienteDetailPage() {
                     ))}
                   </div>
                   {anamnesisForm.alergias?.otras && (
-                    <input className="form-input" style={{ marginTop: 6 }} placeholder="Especificar otras alergias..."
+                    <input className="form-input" style={{ marginTop: 6 }} placeholder=""
                       value={anamnesisForm.alergias_otras}
                       onChange={e => setAnamnesisForm(f => ({ ...f, alergias_otras: e.target.value }))} />
                   )}
@@ -830,7 +1111,7 @@ export default function PacienteDetailPage() {
                       onChange={e => setAnamnesisForm(f => ({ ...f, cirugias_previas: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Antecedentes odontológicos</label>
+                    <label className="form-label">Antecedentes clínicos</label>
                     <textarea className="form-input" rows={2} value={anamnesisForm.antecedentes_odontologicos}
                       onChange={e => setAnamnesisForm(f => ({ ...f, antecedentes_odontologicos: e.target.value }))} />
                   </div>
@@ -858,7 +1139,7 @@ export default function PacienteDetailPage() {
         <div>
           <div className="card">
             <div className="card-header">
-              <span className="card-title">Odontograma Interactivo</span>
+              <span className="card-title">Diagrama clínico</span>
               <span className="text-sm text-muted">Hacé clic en una pieza para editarla</span>
             </div>
             <div className="card-body">
@@ -882,7 +1163,7 @@ export default function PacienteDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Observaciones</label>
-                  <textarea className="form-input" rows={3} value={piezaNota} onChange={e => setPiezaNota(e.target.value)} placeholder="Observaciones sobre esta pieza..." />
+                  <textarea className="form-input" rows={3} value={piezaNota} onChange={e => setPiezaNota(e.target.value)} placeholder="" />
                 </div>
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setPiezaSel(null)}>Cancelar</button>
@@ -982,7 +1263,7 @@ export default function PacienteDetailPage() {
                     <tr key={p.id}>
                       <td className="text-sm">{format(new Date(p.fecha), "d MMM yyyy, HH:mm", { locale: es })}</td>
                       <td className="td-main">{fmt(p.monto)}</td>
-                      <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
+                      <td><span className="badge badge-neutral">{METODO_LABEL[p.metodo_pago] ?? p.metodo_pago}</span></td>
                       <td className="text-sm text-muted">{p.concepto || '—'}</td>
                     </tr>
                   ))}
@@ -992,6 +1273,99 @@ export default function PacienteDetailPage() {
           )}
         </div>
       )}
+
+      {/* PLANES DE PAGO */}
+      {tab === 'cuotas' && (
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header">
+              <span className="card-title">Planes de pago en cuotas</span>
+              <button className="btn btn-primary btn-sm" onClick={() => {
+                setPlanForm({ concepto: '', monto_total: '', cuotas: 3, fecha_inicio: format(new Date(), 'yyyy-MM-dd') })
+                setPlanError('')
+                setModalPlan(true)
+              }}>+ Nuevo plan</button>
+            </div>
+            {planesPago.length === 0 ? (
+              <div className="empty-state"><div className="empty-icon">💳</div><div className="empty-title">Sin planes de pago</div><div className="empty-sub">Creá un plan para dividir el costo del tratamiento en cuotas mensuales</div></div>
+            ) : (
+              <div className="table-wrapper">
+                <table className="table">
+                  <thead><tr><th>Descripción</th><th>Total</th><th>Cuotas</th><th>Pagadas</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {planesPago.map(plan => {
+                      const totalCuotas = plan.cuotas ?? 0
+                      const pagadas = plan.cuotas_pagadas_real ?? plan.cuotas_pagadas ?? 0
+                      return (
+                        <tr key={plan.id}>
+                          <td style={{ fontWeight: 600 }}>{plan.concepto || 'Sin descripción'}</td>
+                          <td>{fmt(plan.monto_total)}</td>
+                          <td>{totalCuotas || '—'}</td>
+                          <td>
+                            <span style={{ color: pagadas === totalCuotas ? '#15803D' : '#C2410C' }}>
+                              {pagadas}/{totalCuotas || '—'}
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, fontSize: '.74rem', fontWeight: 600, background: plan.estado === 'cancelado' ? '#FEF2F2' : plan.estado === 'completado' ? '#F0FDF4' : '#EFF6FF', color: plan.estado === 'cancelado' ? '#DC2626' : plan.estado === 'completado' ? '#15803D' : '#1D4ED8' }}>
+                              {plan.estado === 'activo' ? 'Activo' : plan.estado === 'completado' ? 'Completado' : 'Cancelado'}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Detalle de cuotas del primer plan activo */}
+          {planesPago.filter(p => p.estado === 'activo').map(plan => (
+            <div key={plan.id} className="card" style={{ marginBottom: 16 }}>
+              <div className="card-header"><span className="card-title">Cuotas — {plan.concepto || fmt(plan.monto_total)}</span></div>
+              <div className="table-wrapper">
+                <table className="table">
+                  <thead><tr><th>Cuota</th><th>Vencimiento</th><th>Monto</th><th>Estado</th><th></th></tr></thead>
+                  <tbody>
+                    {!planesCuotas[plan.id] ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--c-text-3)' }}>Cargando...</td></tr>
+                    ) : planesCuotas[plan.id].map((c, i) => (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight: 600 }}>Cuota {i + 1}</td>
+                        <td className="text-sm">{c.fecha_vencimiento ? format(new Date(c.fecha_vencimiento), "d MMM yyyy", { locale: es }) : '—'}</td>
+                        <td>{fmt(c.monto)}</td>
+                        <td>
+                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, fontSize: '.74rem', fontWeight: 600, background: c.estado === 'pagada' ? '#F0FDF4' : c.estado === 'vencida' ? '#FEF2F2' : '#FFF7ED', color: c.estado === 'pagada' ? '#15803D' : c.estado === 'vencida' ? '#DC2626' : '#92400E' }}>
+                            {c.estado === 'pagada' ? 'Pagada' : c.estado === 'vencida' ? 'Vencida' : 'Pendiente'}
+                          </span>
+                        </td>
+                        <td>
+                          {c.estado !== 'pagada' && (
+                            <button className="btn btn-ghost btn-sm" style={{ color: '#15803D' }} onClick={async () => {
+                              try {
+                                const pago = await api.pagos.create({ paciente_id: paciente.id, monto: c.monto, metodo_pago: 'efectivo', concepto: `Cuota ${i+1} — ${plan.concepto || 'Plan de pago'}` })
+                                await api.planesPago.pagarCuota(plan.id, c.id, pago.id)
+                                const [planes, full] = await Promise.all([
+                                  api.planesPago.list(paciente.id),
+                                  api.planesPago.get(plan.id),
+                                ])
+                                setPlanesPago(planes ?? [])
+                                setPlanesCuotas(prev => ({ ...prev, [plan.id]: full?.cuotas ?? [] }))
+                              } catch (e) { addToast('Error al registrar el pago de la cuota', 'error') }
+                            }}>Marcar pagada</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
 
       {/* MODAL: Editar ficha del paciente */}
       {editPaciente && (
@@ -1105,7 +1479,7 @@ export default function PacienteDetailPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Notas</label>
-                <textarea className="form-input" rows={3} value={piezaNota} onChange={e => setPiezaNota(e.target.value)} placeholder="Observaciones..." />
+                <textarea className="form-input" rows={3} value={piezaNota} onChange={e => setPiezaNota(e.target.value)} placeholder="" />
               </div>
             </div>
             <div className="modal-footer">
@@ -1127,34 +1501,54 @@ export default function PacienteDetailPage() {
             <form onSubmit={handleEvolSave}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div className="form-group">
-                  <label className="form-label">Prestación realizada</label>
-                  <select className="form-input" value={evolForm.prestacion_id} onChange={e => {
-                    const p = prestaciones.find(x => x.id === e.target.value)
-                    setEvolForm(f => ({ ...f, prestacion_id: e.target.value, monto: p ? String(p.precio) : f.monto }))
-                  }}>
-                    <option value="">Sin prestación específica</option>
-                    {prestaciones.map(p => <option key={p.id} value={p.id}>{p.nombre} — {new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(p.precio)}</option>)}
-                  </select>
+                  <label className="form-label">Servicio / Prestación realizada</label>
+                  <input className="form-input" type="text" placeholder="" value={evolForm.prestacion_nombre} onChange={e => setEvolForm(f => ({ ...f, prestacion_nombre: e.target.value }))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Descripción <span className="req">*</span></label>
-                  <textarea className="form-input" rows={4} required value={evolForm.descripcion} onChange={e => setEvolForm(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción del tratamiento realizado..." />
+                  <textarea className="form-input" rows={4} required value={evolForm.descripcion} onChange={e => setEvolForm(f => ({ ...f, descripcion: e.target.value }))} placeholder="" />
                 </div>
                 <div className="form-row cols-2">
-                  <div className="form-group">
-                    <label className="form-label">Piezas tratadas</label>
-                    <input className="form-input" placeholder="11, 21, 31..." value={evolForm.piezas_tratadas} onChange={e => setEvolForm(f => ({ ...f, piezas_tratadas: e.target.value }))} />
-                    <span className="form-hint">Separadas por coma</span>
-                  </div>
+                  {/odontol/i.test(configuracion?.especialidad ?? '') && (
+                    <div className="form-group">
+                      <label className="form-label">Piezas tratadas</label>
+                      <input className="form-input" placeholder="" value={evolForm.piezas_tratadas} onChange={e => setEvolForm(f => ({ ...f, piezas_tratadas: e.target.value }))} />
+                      <span className="form-hint">Separadas por coma</span>
+                    </div>
+                  )}
                   <div className="form-group">
                     <label className="form-label">Monto cobrado</label>
                     <input className="form-input" type="number" min="0" value={evolForm.monto} onChange={e => setEvolForm(f => ({ ...f, monto: e.target.value }))} />
                   </div>
                 </div>
               </div>
+              {/* Adjuntar archivo */}
+              {['tenant', 'admin', 'profesional', 'superadmin'].includes(user?.rol) && (
+                <div className="modal-body" style={{ paddingTop: 0 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">📎 Adjuntar archivo (opcional)</label>
+                    {evolAdjFile ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--c-surface-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--c-border)' }}>
+                        <span style={{ flex: 1, fontSize: '.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          📄 {evolAdjFile.name} <span style={{ fontWeight: 400, color: 'var(--c-text-3)' }}>({(evolAdjFile.size / 1024).toFixed(0)} KB)</span>
+                        </span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEvolAdjFile(null)}>✕</button>
+                      </div>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--c-surface)', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--c-border)', cursor: 'pointer', color: 'var(--c-text-3)', fontSize: '.85rem' }}>
+                        <input type="file" style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                          onChange={e => { const f = e.target.files[0]; if (f) setEvolAdjFile(f); e.target.value = '' }} />
+                        Clic para adjuntar imagen, PDF o documento · Máx 20 MB
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="modal-footer">
-                <button type="button" className="btn btn-ghost" onClick={() => setModalEvol(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : editEvol ? 'Guardar cambios' : 'Guardar evolución'}</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setModalEvol(false); setEvolAdjFile(null) }}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={saving || evolAdjUploading}>
+                  {saving || evolAdjUploading ? 'Guardando...' : editEvol ? 'Guardar cambios' : 'Guardar evolución'}
+                </button>
               </div>
             </form>
           </div>
@@ -1183,7 +1577,6 @@ export default function PacienteDetailPage() {
                     <option value="tarjeta_debito">Tarjeta débito</option>
                     <option value="tarjeta_credito">Tarjeta crédito</option>
                     <option value="obra_social">Obra social</option>
-                    <option value="mercadopago">MercadoPago</option>
                     <option value="cheque">Cheque</option>
                   </select>
                 </div>
@@ -1201,7 +1594,7 @@ export default function PacienteDetailPage() {
                 )}
                 <div className="form-group">
                   <label className="form-label">Concepto</label>
-                  <input className="form-input" value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} placeholder="Ej: Consulta + limpieza..." />
+                  <input className="form-input" value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} placeholder="" />
                 </div>
               </div>
               <div className="modal-footer">
@@ -1236,15 +1629,8 @@ export default function PacienteDetailPage() {
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Prestación</label>
-                  <select className="form-input" value={turnoForm.prestacion_id} onChange={e => setTurnoForm(f => ({ ...f, prestacion_id: e.target.value }))}>
-                    <option value="">Sin prestación específica</option>
-                    {prestaciones.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Motivo</label>
-                  <input className="form-input" value={turnoForm.motivo} onChange={e => setTurnoForm(f => ({ ...f, motivo: e.target.value }))} />
+                  <label className="form-label">Motivo / Servicio</label>
+                  <input className="form-input" value={turnoForm.motivo} onChange={e => setTurnoForm(f => ({ ...f, motivo: e.target.value, prestacion_id: '' }))} placeholder="" />
                 </div>
                 {editTurno && (
                   <div className="form-group">
@@ -1315,29 +1701,29 @@ export default function PacienteDetailPage() {
                   <div className="form-row cols-3">
                     <div className="form-group">
                       <label className="form-label">Medicamento</label>
-                      <input className="form-input" value={med.medicamento} onChange={e => setRecetaMed(idx, 'medicamento', e.target.value)} placeholder="Ej: Amoxicilina" />
+                      <input className="form-input" value={med.medicamento} onChange={e => setRecetaMed(idx, 'medicamento', e.target.value)} placeholder="" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Concentración</label>
-                      <input className="form-input" value={med.concentracion} onChange={e => setRecetaMed(idx, 'concentracion', e.target.value)} placeholder="500mg" />
+                      <input className="form-input" value={med.concentracion} onChange={e => setRecetaMed(idx, 'concentracion', e.target.value)} placeholder="" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Forma farmacéutica</label>
-                      <input className="form-input" value={med.forma} onChange={e => setRecetaMed(idx, 'forma', e.target.value)} placeholder="Cápsulas, jarabe..." />
+                      <input className="form-input" value={med.forma} onChange={e => setRecetaMed(idx, 'forma', e.target.value)} placeholder="" />
                     </div>
                   </div>
                   <div className="form-row cols-3" style={{ marginTop: 10 }}>
                     <div className="form-group">
                       <label className="form-label">Dosis</label>
-                      <input className="form-input" value={med.dosis} onChange={e => setRecetaMed(idx, 'dosis', e.target.value)} placeholder="1 cápsula" />
+                      <input className="form-input" value={med.dosis} onChange={e => setRecetaMed(idx, 'dosis', e.target.value)} placeholder="" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Posología</label>
-                      <input className="form-input" value={med.posologia} onChange={e => setRecetaMed(idx, 'posologia', e.target.value)} placeholder="Cada 8 horas" />
+                      <input className="form-input" value={med.posologia} onChange={e => setRecetaMed(idx, 'posologia', e.target.value)} placeholder="" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Cantidad / Días</label>
-                      <input className="form-input" value={med.dias} onChange={e => setRecetaMed(idx, 'dias', e.target.value)} placeholder="7 días" />
+                      <input className="form-input" value={med.dias} onChange={e => setRecetaMed(idx, 'dias', e.target.value)} placeholder="" />
                     </div>
                   </div>
                 </div>
@@ -1345,18 +1731,79 @@ export default function PacienteDetailPage() {
 
               <button type="button" className="btn btn-secondary btn-sm" onClick={addMedReceta}>+ Agregar medicamento</button>
 
-              {/* Firma */}
+              {/* Indicaciones adicionales */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label">Indicaciones adicionales (opcional)</label>
+                <textarea
+                  className="form-input"
+                  rows={3}
+                  placeholder=""
+                  value={recetaIndicaciones}
+                  onChange={e => setRecetaIndicaciones(e.target.value)}
+                />
+              </div>
+
+              {/* Selector de profesional firmante */}
+              {colaboradoresAll.length > 0 && (
+                <div className="form-group" style={{ marginTop: 8 }}>
+                  <label className="form-label">Profesional firmante</label>
+                  <select
+                    className="form-input"
+                    value={recetaProfesional?.id ?? ''}
+                    onChange={e => {
+                      const sel = colaboradoresAll.find(c => String(c.id) === e.target.value)
+                      setRecetaProfesional(sel ?? null)
+                    }}
+                  >
+                    <option value="">{configuracion?.nombre_profesional || 'Profesional principal'} (titular)</option>
+                    {colaboradoresAll.map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre} {c.apellido ?? ''}{c.matricula ? ` — Mat. ${c.matricula}` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Firma digital */}
               <div style={{ marginTop: 40, borderTop: '1px solid var(--c-border)', paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ borderTop: '1px solid var(--c-text)', width: 200, paddingTop: 6, fontSize: '.82rem' }}>
-                    Firma y sello del profesional
-                  </div>
+                  {(() => {
+                    const firmaBase64 = recetaProfesional?.firma_digital || configuracion?.firma_digital
+                    if (firmaBase64) {
+                      return (
+                        <div>
+                          <img src={firmaBase64} alt="Firma" style={{ maxHeight: 80, maxWidth: 220, display: 'block', margin: '0 auto' }} />
+                          <div style={{ borderTop: '1px solid var(--c-text)', marginTop: 6, paddingTop: 6, fontSize: '.82rem' }}>
+                            {recetaProfesional
+                              ? `${recetaProfesional.nombre} ${recetaProfesional.apellido ?? ''}`
+                              : configuracion?.nombre_profesional || 'Profesional'}
+                            {(recetaProfesional?.matricula || configuracion?.matricula) && (
+                              <span style={{ display: 'block', fontSize: '.75rem', color: 'var(--c-text-3)' }}>
+                                Mat. {recetaProfesional?.matricula ?? configuracion?.matricula}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div>
+                        <div style={{ height: 70, width: 220, border: '1px dashed var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.8rem', color: 'var(--c-text-3)', marginBottom: 6 }}>
+                          Sin firma digital guardada
+                        </div>
+                        <div style={{ borderTop: '1px solid var(--c-text)', paddingTop: 6, fontSize: '.82rem' }}>
+                          Firma y sello del profesional
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setModalReceta(false)}>Cerrar</button>
-              <button type="button" className="btn btn-primary" onClick={printReceta}>Imprimir receta</button>
+              <button type="button" className="btn btn-primary" disabled={recetaSaving} onClick={guardarEImprimirReceta}>
+                {recetaSaving ? 'Guardando...' : '🖨️ Guardar e imprimir'}
+              </button>
             </div>
           </div>
         </div>
@@ -1386,8 +1833,8 @@ export default function PacienteDetailPage() {
                 <div className="text-sm text-muted">Fecha: {format(new Date(), "d 'de' MMMM yyyy", { locale: es })}</div>
               </div>
 
-              {/* Selector de tipo */}
-              <div style={{ display: 'flex', gap: 8 }}>
+              {/* Selector de tipo — oculto al imprimir */}
+              <div className="indicaciones-tipo-selector" style={{ display: 'flex', gap: 8 }}>
                 {[['extraccion','Post-extracción'],['cirugia','Post-cirugía'],['blanqueamiento','Post-blanqueamiento']].map(([tipo, label]) => (
                   <button key={tipo} type="button"
                     className={`btn btn-sm ${indicacionesTipo === tipo ? 'btn-primary' : 'btn-ghost'}`}
@@ -1399,7 +1846,7 @@ export default function PacienteDetailPage() {
 
               {/* Texto editable */}
               <div className="form-group">
-                <label className="form-label">Indicaciones (editable)</label>
+                <label className="form-label indicaciones-form-label">Indicaciones (editable)</label>
                 <textarea
                   className="form-input"
                   rows={16}
@@ -1412,15 +1859,25 @@ export default function PacienteDetailPage() {
               {/* Firma */}
               <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ borderTop: '1px solid var(--c-text)', width: 200, paddingTop: 6, fontSize: '.82rem' }}>
-                    Firma y sello del profesional
-                  </div>
+                  {configuracion?.firma_digital ? (
+                    <div>
+                      <img src={configuracion.firma_digital} alt="Firma" style={{ maxHeight: 70, maxWidth: 200, display: 'block', margin: '0 auto' }} />
+                      <div style={{ borderTop: '1px solid var(--c-text)', marginTop: 4, paddingTop: 6, fontSize: '.82rem' }}>
+                        {configuracion.nombre_profesional || 'Profesional'}
+                        {configuracion.matricula && <span style={{ display: 'block', fontSize: '.75rem', color: 'var(--c-text-3)' }}>Mat. {configuracion.matricula}</span>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ borderTop: '1px solid var(--c-text)', width: 200, paddingTop: 6, fontSize: '.82rem' }}>
+                      Firma y sello del profesional
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setModalIndicaciones(false)}>Cerrar</button>
-              <button type="button" className="btn btn-primary" onClick={printIndicaciones}>Imprimir indicaciones</button>
+              <button type="button" className="btn btn-primary" onClick={printIndicaciones}>🖨️ Imprimir indicaciones</button>
             </div>
           </div>
         </div>
@@ -1481,12 +1938,46 @@ export default function PacienteDetailPage() {
                 {cobroError && <div className="alert alert-danger">{cobroError}</div>}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-ghost" onClick={() => setModalCobro(false)}>Omitir por ahora</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setModalCobro(false); setTurnoACobrar(null); }}>Omitir por ahora</button>
                 <button type="submit" className="btn btn-success" disabled={cobroSaving}>
                   {cobroSaving ? 'Registrando...' : 'Registrar cobro'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Encuesta NPS / Satisfacción */}
+      {showNPS && (
+        <div className="modal-overlay" onClick={() => { setShowNPS(null); setTurnoACobrar(null) }}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Pago registrado ✓</span>
+              <button className="btn-close" onClick={() => { setShowNPS(null); setTurnoACobrar(null) }}>✕</button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '20px 24px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: 8 }}>⭐</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>¿Enviar encuesta de satisfacción?</div>
+              <div style={{ fontSize: '.84rem', color: 'var(--c-text-2)', marginBottom: 16 }}>
+                Enviá un mensaje por WhatsApp a {paciente.nombre} para conocer su experiencia.
+              </div>
+              {(() => {
+                const texto = `Hola ${paciente.nombre}! Gracias por visitarnos hoy 😊 Nos encantaría saber tu opinión sobre la atención. En una escala del 1 al 10, ¿cómo calificarías tu experiencia en el consultorio? Tu opinión nos ayuda a mejorar. ¡Gracias!`
+                const url = `${getWhatsAppUrl(paciente.telefono)}?text=${encodeURIComponent(texto)}`
+                return (
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                    <button className="btn btn-ghost" onClick={() => { setShowNPS(null); setTurnoACobrar(null) }}>Omitir</button>
+                    <a href={url} target="_blank" rel="noreferrer"
+                      className="btn btn-success"
+                      style={{ textDecoration: 'none' }}
+                      onClick={() => { setShowNPS(null); setTurnoACobrar(null) }}>
+                      📲 Enviar encuesta
+                    </a>
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         </div>
       )}
@@ -1518,24 +2009,10 @@ export default function PacienteDetailPage() {
                         <span className="text-sm" style={{ fontWeight: 600 }}>Ítem {idx + 1}</span>
                         {presupuestoItems.length > 1 && <button type="button" className="btn btn-danger btn-sm" onClick={() => removePresupuestoItem(idx)}>Eliminar</button>}
                       </div>
-                      <div className="form-row cols-2" style={{ marginBottom: 8 }}>
+                      <div style={{ marginBottom: 8 }}>
                         <div className="form-group">
-                          <label className="form-label">Prestación</label>
-                          <select className="form-input" value={item.prestacion_id} onChange={e => {
-                            const p = prestaciones.find(x => x.id === e.target.value)
-                            setPresupuestoItem(idx, 'prestacion_id', e.target.value)
-                            if (p) {
-                              setPresupuestoItem(idx, 'descripcion', p.nombre)
-                              setPresupuestoItem(idx, 'precio_unitario', String(p.precio ?? 0))
-                            }
-                          }}>
-                            <option value="">Sin prestación</option>
-                            {prestaciones.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">Descripción <span className="req">*</span></label>
-                          <input className="form-input" value={item.descripcion} onChange={e => setPresupuestoItem(idx, 'descripcion', e.target.value)} placeholder="Descripción del ítem..." required={idx === 0} />
+                          <label className="form-label">Descripción del servicio <span className="req">*</span></label>
+                          <input className="form-input" value={item.descripcion} onChange={e => setPresupuestoItem(idx, 'descripcion', e.target.value)} placeholder="" required={idx === 0} />
                         </div>
                       </div>
                       <div className="form-row cols-2">
@@ -1564,7 +2041,7 @@ export default function PacienteDetailPage() {
                 <div className="form-row cols-2">
                   <div className="form-group">
                     <label className="form-label">Notas</label>
-                    <textarea className="form-input" rows={2} value={presupuestoForm.notas} onChange={e => setPresupuestoForm(f => ({ ...f, notas: e.target.value }))} placeholder="Condiciones, aclaraciones..." />
+                    <textarea className="form-input" rows={2} value={presupuestoForm.notas} onChange={e => setPresupuestoForm(f => ({ ...f, notas: e.target.value }))} placeholder="" />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Fecha de vencimiento</label>
@@ -1607,6 +2084,64 @@ export default function PacienteDetailPage() {
           </div>
         </div>
       )}
+      {/* MODAL: Nuevo plan de pago */}
+      {modalPlan && (
+        <div className="modal-overlay" onClick={() => setModalPlan(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Nuevo plan de pago</span>
+              <button className="btn-close" onClick={() => setModalPlan(false)}>✕</button>
+            </div>
+            <form onSubmit={async e => {
+              e.preventDefault()
+              if (!planForm.monto_total || Number(planForm.monto_total) <= 0) { setPlanError('El monto debe ser mayor a cero'); return }
+              setPlanSaving(true); setPlanError('')
+              try {
+                const plan = await api.planesPago.create({ paciente_id: paciente.id, ...planForm, monto_total: Number(planForm.monto_total), cuotas: Number(planForm.cuotas) })
+                const planes = await api.planesPago.list(paciente.id)
+                setPlanesPago(planes ?? [])
+                setPlanesCuotas(prev => { const n = { ...prev }; delete n[plan.id]; return n })
+                setModalPlan(false)
+              } catch (err) { setPlanError('No se pudo crear el plan. Verificá los datos.') }
+              finally { setPlanSaving(false) }
+            }}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-group">
+                  <label className="form-label">Descripción</label>
+                  <input className="form-input" value={planForm.concepto} onChange={e => setPlanForm(f => ({ ...f, concepto: e.target.value }))} placeholder="" />
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label className="form-label">Monto total <span className="req">*</span></label>
+                    <input className="form-input" type="number" min="1" required value={planForm.monto_total} onChange={e => setPlanForm(f => ({ ...f, monto_total: e.target.value }))} placeholder="$0" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Cantidad de cuotas</label>
+                    <select className="form-input" value={planForm.cuotas} onChange={e => setPlanForm(f => ({ ...f, cuotas: e.target.value }))}>
+                      {[2,3,4,5,6,8,10,12,18,24].map(n => <option key={n} value={n}>{n} cuotas</option>)}
+                    </select>
+                  </div>
+                </div>
+                {planForm.monto_total > 0 && (
+                  <div style={{ background: 'var(--c-surface-2)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '.84rem' }}>
+                    Cuota mensual: <strong>{fmt(Math.ceil(planForm.monto_total / planForm.cuotas))}</strong>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Fecha de inicio</label>
+                  <input className="form-input" type="date" value={planForm.fecha_inicio} onChange={e => setPlanForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
+                </div>
+                {planError && <div className="alert alert-danger">{planError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModalPlan(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={planSaving}>{planSaving ? 'Creando...' : 'Crear plan'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: Presupuesto aprobado → generar turnos */}
       {modalGenTurnos && (
         <div className="modal-overlay" onClick={() => setModalGenTurnos(false)}>
@@ -1626,6 +2161,21 @@ export default function PacienteDetailPage() {
               <button className="btn btn-primary" onClick={handleGenerarTurnos} disabled={genTurnosSaving}>
                 {genTurnosSaving ? 'Creando turnos...' : 'Sí, programar turnos'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmación genérico */}
+      {modalConfirm && (
+        <div className="modal-overlay" onClick={() => setModalConfirm(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-body" style={{ padding: 24 }}>
+              <p style={{ fontSize: '.95rem', marginBottom: 20 }}>{modalConfirm.msg}</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => setModalConfirm(null)}>Cancelar</button>
+                <button className={`btn ${modalConfirm.danger !== false ? 'btn-danger' : 'btn-primary'}`} onClick={async () => { setModalConfirm(null); await modalConfirm.onConfirm() }}>Confirmar</button>
+              </div>
             </div>
           </div>
         </div>

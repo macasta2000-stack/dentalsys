@@ -3,24 +3,26 @@
 // Whitelist: solo estos campos se permiten en inserts/updates por tabla
 const ALLOWED_FIELDS = {
   pacientes: ['nombre','apellido','dni','fecha_nacimiento','sexo','telefono','telefono_alternativo','email','direccion','ciudad','obra_social','numero_afiliado','plan_obra_social','alergias','medicacion_actual','antecedentes_medicos','antecedentes_odontologicos','notas','estado'],
-  turnos: ['paciente_id','fecha_hora','duracion_minutos','motivo','prestacion_id','estado','notas'],
-  pagos: ['paciente_id','monto','metodo_pago','concepto','fecha','monto_os','monto_copago','turno_id'],
+  turnos: ['paciente_id','fecha_hora','duracion_minutos','motivo','prestacion_id','estado','notas','sesiones_autorizadas','profesional_id'],
+  pagos: ['paciente_id','monto','metodo_pago','concepto','fecha','monto_os','monto_copago','turno_id','presupuesto_id','numero_recibo','notas'],
   prestaciones: ['nombre','codigo','precio','duracion_minutos','categoria','activo','descripcion'],
   insumos: ['nombre','descripcion','unidad','stock_actual','stock_minimo','precio_unitario','proveedor','categoria','activo'],
-  evoluciones: ['paciente_id','descripcion','fecha','piezas_tratadas','prestacion_id','prestacion_nombre','monto'],
+  evoluciones: ['paciente_id','descripcion','tipo','notas','fecha','piezas_tratadas','prestacion_id','prestacion_nombre','monto'],
   odontograma: ['paciente_id','numero_pieza','estado','caras_afectadas','notas'],
   presupuestos: ['paciente_id','numero','total','estado','notas','fecha_vencimiento','total_pagado'],
-  configuracion: ['nombre_consultorio','nombre_profesional','matricula','especialidad','telefono','email','direccion','ciudad','cuit','duracion_turno_default','horario_inicio','horario_fin','logo_url'],
+  configuracion: ['nombre_consultorio','nombre_profesional','matricula','especialidad','telefono','email','direccion','ciudad','cuit','duracion_turno_default','horario_inicio','horario_fin','dias_laborales','moneda','firma_digital','onboarding_completado','workflow_etapas','notif_email_turno','notif_email_cancelacion','notif_whatsapp_numero','plantillas_evoluciones','catalogo_farmacos','tipo_cobro','pais','permisos_roles'],
   convenios: ['nombre_os','prestacion_id','monto_os','monto_copago','activo'],
+  recetas: ['paciente_id','profesional_id','profesional_nombre','profesional_matricula','fecha','medicamentos','indicaciones'],
+  giftcards: ['codigo','monto_original','monto_restante','estado','paciente_id','fecha_vencimiento','notas'],
 }
 
 // Tablas que tienen columna updated_at
-const HAS_UPDATED_AT = new Set(['pacientes','turnos','presupuestos','odontograma','insumos','configuracion','prestaciones'])
+const HAS_UPDATED_AT = new Set(['pacientes','turnos','presupuestos','odontograma','insumos','configuracion','prestaciones','evoluciones'])
 
 // Filtra un objeto body para quedarse solo con campos permitidos de la tabla
 export function pick(table, data) {
   const allowed = ALLOWED_FIELDS[table]
-  if (!allowed) return data
+  if (!allowed) return {}
   const clean = {}
   for (const key of allowed) {
     if (key in data) clean[key] = data[key]

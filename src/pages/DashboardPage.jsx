@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, isSameWeek } from 'date-fns'
+import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
+import { useRoleAccess } from '../hooks/useRoleAccess'
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, isSameWeek, addDays, startOfWeek, endOfWeek, isSameDay, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
-const METODO_LABEL = { efectivo:'Efectivo', transferencia:'Transferencia', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', obra_social:'Obra Social', mercadopago:'MercadoPago', cheque:'Cheque', otro:'Otro' }
+const toYMD = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+
+const METODO_LABEL = { efectivo:'Efectivo', transferencia:'Transferencia', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', obra_social:'Obra Social', cheque:'Cheque', otro:'Otro' }
 
 function fmt(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n ?? 0)
@@ -16,15 +22,26 @@ function minutesUntil(dateStr, now) {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const addToast = useToast()
+  const { user } = useAuth()
+  const { canAccess } = useRoleAccess()
+  const isProfesional = user?.rol === 'profesional'
+  const isRecepcionista = user?.rol === 'recepcionista'
+  const puedeVerFacturacion = !isRecepcionista   // recepcionista NO ve facturación
   const today = new Date()
   const [turnosHoy, setTurnosHoy] = useState([])
+  const [proximosTurnos, setProximosTurnos] = useState([])
   const [stats, setStats] = useState({ facturacion: 0, ausentes: 0 })
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(new Date())
+  const [turnosSemana, setTurnosSemana] = useState([])
 
   // Alertas del día
   const [alertas, setAlertas] = useState({ insumos: [], presupuestos: [], cumpleanos: [], deudoresConTurno: [] })
   const [alertasLoading, setAlertasLoading] = useState(true)
+
+  // NPS
+  const [npsData, setNpsData] = useState(null)
 
   // Modal cobro dashboard
   const [modalCobro, setModalCobro] = useState(false)
@@ -40,32 +57,74 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
+    if (!user) return   // Esperar a que el user esté disponible
+
     async function load() {
+      // Leer el rol directamente del user dentro del efecto para evitar stale closures
+      const rol = user.rol
+      const esProfesional = rol === 'profesional'
+      const esRecepcionista = rol === 'recepcionista'
+
       try {
-        const [turnos, pagos] = await Promise.all([
-          api.turnos.list({ from: startOfDay(today).toISOString(), to: endOfDay(today).toISOString() }),
-          api.pagos.list({ from: startOfMonth(today).toISOString(), to: endOfMonth(today).toISOString() }),
+        const weekFrom = startOfWeek(today, { weekStartsOn: 1 })
+        const weekTo = endOfWeek(today, { weekStartsOn: 1 })
+        const mesFrom = toYMD(startOfMonth(today))
+        const mesTo = toYMD(endOfMonth(today))
+
+        // Paralelizar todas las llamadas para reducir tiempo de carga
+        const [turnos, proximosFetch, semanaFetch, turnosMes, pagosData] = await Promise.all([
+          api.turnos.list({ from: toYMD(startOfDay(today)), to: toYMD(endOfDay(today)) }).catch(() => []),
+          api.turnos.list({ from: toYMD(today), to: toYMD(addDays(today, 7)) }).catch(() => []),
+          api.turnos.list({ from: toYMD(weekFrom), to: toYMD(weekTo) }).catch(() => []),
+          esProfesional
+            ? api.turnos.list({ from: mesFrom, to: mesTo }).catch(() => [])
+            : Promise.resolve([]),
+          !esRecepcionista
+            ? api.pagos.list({ from: mesFrom, to: mesTo }).catch(() => [])
+            : Promise.resolve([]),
         ])
+
         setTurnosHoy(turnos ?? [])
-        const facturacion = (pagos ?? []).reduce((s, p) => s + Number(p.monto), 0)
+        setProximosTurnos(proximosFetch ?? [])
+        setTurnosSemana(semanaFetch ?? [])
         const ausentes = (turnos ?? []).filter(t => t.estado === 'ausente').length
+
+        let facturacion = 0
+        if (esProfesional) {
+          const misTurnoIds = new Set((turnosMes ?? []).map(t => t.id))
+          facturacion = (pagosData ?? [])
+            .filter(p => p.turno_id && misTurnoIds.has(p.turno_id))
+            .reduce((s, p) => s + Number(p.monto), 0)
+        } else if (!esRecepcionista) {
+          facturacion = (pagosData ?? []).reduce((s, p) => s + Number(p.monto), 0)
+        }
+
         setStats({ facturacion, ausentes })
+      } catch (e) {
+        console.error('[Dashboard] Error cargando datos:', e?.message)
       } finally {
         setLoading(false)
       }
     }
     load()
     loadAlertas()
-  }, [])
+    // NPS solo para dueño/admin
+    if (user?.rol === 'tenant' || user?.rol === 'admin' || user?.rol === 'superadmin') {
+      api.encuestas.resumen().then(setNpsData).catch(() => {})
+    }
+  }, [user?.rol])   // Re-ejecutar si cambia el rol
 
   async function loadAlertas() {
     setAlertasLoading(true)
+    // Only fetch restricted resources for roles that have access
+    const puedeVerInsumos = canAccess('insumos')
+    const puedeVerReportes = canAccess('reportes')
     try {
       const [insumos, presupuestos, pacientes, turnosHoyData] = await Promise.allSettled([
-        api.insumos.list(),
-        api.presupuestos.list(),
+        puedeVerInsumos ? api.insumos.list() : Promise.resolve([]),
+        puedeVerReportes ? api.presupuestos.list() : Promise.resolve([]),
         api.pacientes.list(),
-        api.turnos.list({ from: startOfDay(today).toISOString(), to: endOfDay(today).toISOString() }),
+        api.turnos.list({ from: toYMD(startOfDay(today)), to: toYMD(endOfDay(today)) }),
       ])
 
       const getVal = r => r.status === 'fulfilled' ? (r.value ?? []) : []
@@ -103,21 +162,29 @@ export default function DashboardPage() {
   const estadoLabel = { programado: 'Programado', confirmado: 'Confirmado', presente: 'Presente', completado: 'Completado', ausente: 'Ausente', no_asistio: 'No asistió', cancelado: 'Cancelado' }
 
   async function loadTurnosHoy() {
-    const turnos = await api.turnos.list({ from: startOfDay(today).toISOString(), to: endOfDay(today).toISOString() }).catch(() => [])
+    const [turnos, proximos] = await Promise.all([
+      api.turnos.list({ from: toYMD(startOfDay(today)), to: toYMD(endOfDay(today)) }).catch(() => []),
+      api.turnos.list({ from: toYMD(today), to: toYMD(addDays(today, 7)) }).catch(() => []),
+    ])
     setTurnosHoy(turnos ?? [])
+    setProximosTurnos(proximos ?? [])
   }
+
+  // Solo el dueño/admin puede cobrar — recepcionistas y profesionales solo cambian estado
+  const puedeECobrar = user?.rol === 'tenant' || user?.rol === 'admin' || user?.rol === 'superadmin'
 
   async function cambiarEstado(turno, nuevoEstado) {
     try {
-      await api.turnos.update(turno.id, { estado: nuevoEstado })
-      if (nuevoEstado === 'completado') {
-        setTurnoACobrar(turno)
+      const updated = await api.turnos.update(turno.id, { estado: nuevoEstado })
+      // Modal de cobro: solo para roles con acceso a caja
+      if (puedeECobrar && (nuevoEstado === 'presente' || nuevoEstado === 'completado')) {
+        setTurnoACobrar({ ...turno, ...updated })
         setCobroForm({ monto: '', metodo_pago: 'efectivo', concepto: turno.motivo || 'Consulta', monto_os: 0, monto_copago: 0 })
         setCobroError('')
         setModalCobro(true)
       }
       await loadTurnosHoy()
-    } catch (e) { alert(`No se pudo cambiar el estado del turno. ${e.message}`) }
+    } catch (e) { addToast(`No se pudo cambiar el estado del turno. ${e.message}`, 'error') }
   }
 
   async function handleCobro(e) {
@@ -137,13 +204,18 @@ export default function DashboardPage() {
         pagoData.monto_copago = Number(cobroForm.monto_copago) || 0
       }
       await api.pagos.create(pagoData)
+      // Si el turno quedó en "presente", marcarlo como completado
+      if (turnoACobrar.estado === 'presente') {
+        await api.turnos.update(turnoACobrar.id, { estado: 'completado' }).catch(() => {})
+      }
       setModalCobro(false)
       setTurnoACobrar(null)
+      await loadTurnosHoy()
     } catch (e) { setCobroError(`No se pudo registrar el pago. Verificá que el monto sea mayor a cero.`) }
     finally { setCobroSaving(false) }
   }
 
-  const nextTurno = turnosHoy.find(t => new Date(t.fecha_hora) > now && !['cancelado','ausente','completado'].includes(t.estado))
+  const nextTurno = proximosTurnos.find(t => new Date(t.fecha_hora) > now && !['cancelado','ausente','completado'].includes(t.estado))
   const minutos = nextTurno ? minutesUntil(nextTurno.fecha_hora, now) : null
 
   const totalAlertas = alertas.insumos.length + alertas.presupuestos.length + alertas.cumpleanos.length + alertas.deudoresConTurno.length
@@ -163,16 +235,34 @@ export default function DashboardPage() {
           <div className="stat-value primary">{loading ? '—' : turnosHoy.length}</div>
           <div className="stat-sub">{turnosHoy.filter(t => t.estado === 'completado').length} completados</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Facturación del mes</div>
-          <div className="stat-value success">{loading ? '—' : fmt(stats.facturacion)}</div>
-          <div className="stat-sub">{format(today, 'MMMM yyyy', { locale: es })}</div>
-        </div>
+        {puedeVerFacturacion && (
+          <div className="stat-card">
+            <div className="stat-label">
+              {isProfesional ? 'Mi facturación del mes' : 'Facturación del mes'}
+            </div>
+            <div className="stat-value success">{loading ? '—' : fmt(stats.facturacion)}</div>
+            <div className="stat-sub">
+              {format(today, 'MMMM yyyy', { locale: es })}
+              {isProfesional && <span style={{ display: 'block', fontSize: '.72rem', color: 'var(--c-text-3)', marginTop: 2 }}>Solo tus turnos</span>}
+            </div>
+          </div>
+        )}
         <div className="stat-card">
           <div className="stat-label">Ausentes hoy</div>
           <div className={`stat-value ${stats.ausentes > 0 ? 'warning' : ''}`}>{loading ? '—' : stats.ausentes}</div>
           <div className="stat-sub">turnos sin presentarse</div>
         </div>
+        {npsData !== null && (
+          <div className="stat-card">
+            <div className="stat-label">Satisfacción (NPS)</div>
+            <div className={`stat-value ${npsData.nps_score === null ? '' : npsData.nps_score >= 50 ? 'success' : npsData.nps_score >= 0 ? 'warning' : 'danger'}`}>
+              {npsData.nps_score === null ? '—' : npsData.nps_score}
+            </div>
+            <div className="stat-sub">
+              {npsData.total_respondidas} respuestas · {npsData.tasa_respuesta}% tasa
+            </div>
+          </div>
+        )}
         <div className="stat-card">
           <div className="stat-label">Próximo turno</div>
           {loading ? <div className="stat-value">—</div> : nextTurno ? (
@@ -191,6 +281,52 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Gráfico de turnos de la semana */}
+      {(() => {
+        const weekFrom = startOfWeek(today, { weekStartsOn: 1 })
+        const days = Array.from({ length: 7 }, (_, i) => addDays(weekFrom, i))
+        const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+        const data = days.map((d, i) => ({
+          dia: DAY_LABELS[i],
+          total: turnosSemana.filter(t => isSameDay(parseISO(t.fecha_hora), d)).length,
+          isToday: isSameDay(d, today),
+        }))
+        return (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card-header">
+              <span className="card-title">Turnos de la semana</span>
+              <span className="text-sm text-muted">{format(weekFrom, "d MMM", { locale: es })} — {format(addDays(weekFrom, 6), "d MMM", { locale: es })}</span>
+            </div>
+            <div className="card-body" style={{ paddingTop: 8 }}>
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '24px 0' }}><span className="spinner" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="dia" tick={{ fontSize: 12, fill: 'var(--c-text-3)' }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--c-text-3)' }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, fontSize: '.82rem' }}
+                      formatter={(v) => [v, 'Turnos']}
+                      labelStyle={{ fontWeight: 700, color: 'var(--c-text)' }}
+                    />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      {data.map((entry, i) => (
+                        <Cell key={i} fill={entry.isToday ? 'var(--c-primary, #0EA5E9)' : '#BAE6FD'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+              <div style={{ fontSize: '.72rem', color: 'var(--c-text-3)', textAlign: 'center', marginTop: 4 }}>
+                Barra azul oscuro = hoy
+                {isProfesional && ' · Solo tus turnos'}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Panel de alertas */}
       {!alertasLoading && totalAlertas > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
@@ -206,7 +342,9 @@ export default function DashboardPage() {
                   <strong>{alertas.insumos.length} insumo{alertas.insumos.length > 1 ? 's' : ''} con stock bajo:</strong>{' '}
                   {alertas.insumos.slice(0, 3).map(i => i.nombre).join(', ')}{alertas.insumos.length > 3 ? '...' : ''}
                 </span>
-                <button className="btn btn-ghost btn-sm" style={{ fontSize: '.72rem' }} onClick={() => navigate('/insumos')}>Ver insumos →</button>
+                {canAccess('insumos') && (
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: '.72rem' }} onClick={() => navigate('/insumos')}>Ver insumos →</button>
+                )}
               </div>
             )}
             {alertas.presupuestos.length > 0 && (
@@ -318,6 +456,14 @@ export default function DashboardPage() {
                 <div className="alert alert-info" style={{ fontSize: '.82rem' }}>
                   Paciente: <strong>{turnoACobrar.paciente_nombre}</strong>
                   {turnoACobrar.motivo && <> — {turnoACobrar.motivo}</>}
+                  {turnoACobrar.sesiones_autorizadas && (
+                    <div style={{ marginTop: 6, fontWeight: 700, color: '#1D4ED8' }}>
+                      Sesión {turnoACobrar.sesion_numero ?? '?'} de {turnoACobrar.sesiones_autorizadas} autorizadas
+                      {turnoACobrar.sesion_numero >= turnoACobrar.sesiones_autorizadas && (
+                        <span style={{ marginLeft: 8, color: '#DC2626' }}>⚠ Última sesión autorizada</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="form-row cols-2">
                   <div className="form-group">
@@ -352,7 +498,7 @@ export default function DashboardPage() {
                 <div className="form-group">
                   <label className="form-label">Concepto</label>
                   <input className="form-input" value={cobroForm.concepto}
-                    onChange={e => setCobroForm(f => ({ ...f, concepto: e.target.value }))} placeholder="Descripción del cobro" />
+                    onChange={e => setCobroForm(f => ({ ...f, concepto: e.target.value }))} placeholder="" />
                 </div>
                 {cobroError && <div className="alert alert-danger">{cobroError}</div>}
               </div>

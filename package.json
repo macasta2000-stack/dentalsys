@@ -1,5 +1,5 @@
 {
-  "name": "dentalsys",
+  "name": "clingest",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,11 +9,17 @@
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=odontologo",
     "db:init": "wrangler d1 execute dentalsys-db --file=schema.sql",
-    "db:local": "wrangler d1 execute dentalsys-db --local --file=schema.sql"
+    "db:local": "wrangler d1 execute dentalsys-db --local --file=schema.sql",
+    "test": "node test-api.js",
+    "test:prod": "node test-api.js https://odontologo-228.pages.dev",
+    "db:migrate": "wrangler d1 execute dentalsys-db --file=migrations/025_comisiones_giftcards_encuestas.sql && wrangler d1 execute dentalsys-db --file=migrations/026_pricing_update.sql",
+    "db:migrate:local": "wrangler d1 execute dentalsys-db --local --file=migrations/025_comisiones_giftcards_encuestas.sql && wrangler d1 execute dentalsys-db --local --file=migrations/026_pricing_update.sql"
   },
   "dependencies": {
     "date-fns": "^3.3.1",
     "dexie": "^3.2.4",
+    "idb": "^8.0.0",
+    "jspdf": "^4.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
@@ -22,6 +28,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
     "vite": "^5.0.8",
+    "vite-plugin-pwa": "^0.20.0",
     "wrangler": "^3.28.0"
   }
 }
