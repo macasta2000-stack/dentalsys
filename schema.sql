@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS colaboradores (
   notas TEXT DEFAULT '',
   activo INTEGER DEFAULT 1,
   porcentaje_comision REAL DEFAULT 0,
+  especialidad TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
 

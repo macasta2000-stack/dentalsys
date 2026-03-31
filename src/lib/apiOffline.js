@@ -97,7 +97,29 @@ async function offlineGet(path) {
 
   const id = extractId(path)
   if (id) return localGet(store, id)
-  return localGetAll(store)
+
+  // Apply query filters to cached data so date-filtered queries don't return stale unfiltered results
+  const all = await localGetAll(store)
+  if (!all) return []
+
+  try {
+    const qs = new URL(`http://x${path}`).searchParams
+    const from = qs.get('from')
+    const to = qs.get('to')
+    const pacienteId = qs.get('paciente_id')
+
+    return all.filter(r => {
+      if (pacienteId && String(r.paciente_id) !== String(pacienteId)) return false
+      if (from || to) {
+        const fecha = (r.fecha_hora ?? r.fecha ?? '').substring(0, 10)
+        if (fecha && from && fecha < from) return false
+        if (fecha && to && fecha > to) return false
+      }
+      return true
+    })
+  } catch {
+    return all
+  }
 }
 
 // ---------------------------------------------------------------------------

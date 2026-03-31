@@ -73,6 +73,7 @@ export async function onRequestPost({ request, data, env }) {
     email: body.email ? body.email.toLowerCase() : '',
     telefono: body.telefono ?? '',
     matricula: body.matricula ?? '',
+    especialidad: body.especialidad ?? '',
     duracion_default: body.duracion_default ?? 30,
     firma_digital: body.firma_digital ?? '',
     notas: body.notas ?? '',
@@ -109,8 +110,8 @@ export async function onRequestPatch({ request, data, env, params }) {
 
   // Colaboradores updating themselves cannot change rol, activo, or revoke access
   const allowed = isSelfUpdate
-    ? ['nombre', 'apellido', 'email', 'telefono', 'matricula', 'duracion_default', 'firma_digital']
-    : ['nombre', 'apellido', 'rol', 'email', 'telefono', 'matricula', 'duracion_default', 'firma_digital', 'notas', 'activo', 'porcentaje_comision']
+    ? ['nombre', 'apellido', 'email', 'telefono', 'matricula', 'especialidad', 'duracion_default', 'firma_digital']
+    : ['nombre', 'apellido', 'rol', 'email', 'telefono', 'matricula', 'especialidad', 'duracion_default', 'firma_digital', 'notas', 'activo', 'porcentaje_comision']
   const fields = {}
   for (const k of allowed) {
     if (body[k] !== undefined) fields[k] = body[k]
