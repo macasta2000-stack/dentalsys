@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import Odontograma from '../components/Odontograma'
+import { AIPatientSummary, AITreatmentSuggestions, AIWhatsAppComposer } from '../components/AIAssistant'
 import { format, addDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -827,6 +828,14 @@ export default function PacienteDetailPage() {
         </div>
       </div>
 
+      {/* AI Patient Summary */}
+      <AIPatientSummary
+        paciente={paciente}
+        evoluciones={evoluciones}
+        odontograma={piezas}
+        anamnesis={anamnesis}
+      />
+
       {/* Barra de info rápida */}
       {(() => {
         const ahora = new Date()
@@ -1146,6 +1155,12 @@ export default function PacienteDetailPage() {
               <Odontograma piezas={piezas} onPiezaClick={handlePiezaClick} />
             </div>
           </div>
+
+          {/* AI Treatment Suggestions */}
+          <AITreatmentSuggestions
+            odontograma={piezas}
+            pacienteInfo={paciente ? `${paciente.nombre} ${paciente.apellido}${paciente.alergias ? `, alergias: ${paciente.alergias}` : ''}${paciente.medicacion_actual ? `, medicación: ${paciente.medicacion_actual}` : ''}` : ''}
+          />
 
           {/* Panel de edición de pieza seleccionada */}
           {piezaSel !== null && (

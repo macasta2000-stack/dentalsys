@@ -17,6 +17,7 @@ const TRIAL_FEATURES = {
   recordatorios: true,
   exportar: true,
   api_access: true,
+  ia_creditos: true,
 }
 
 // Shorthand hook: returns true when trial has expired

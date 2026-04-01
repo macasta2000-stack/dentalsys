@@ -9,7 +9,7 @@ export default function LoginPage() {
   const { login, register } = useAuth()
   const navigate = useNavigate()
   const addToast = useToast()
-  const [mode, setMode] = useState('login') // login | register
+  const [mode, setMode] = useState('login') // login only — registration disabled (admin-only)
 
   useEffect(() => {
     if (sessionStorage.getItem('session_expired')) {
@@ -122,18 +122,10 @@ export default function LoginPage() {
 
       <div className="login-right">
         <form className="login-form" onSubmit={handleSubmit}>
-          <h2>{mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}</h2>
-          <p className="login-sub">
-            {mode === 'login' ? 'Bienvenido de nuevo' : 'Configurá tu consultorio en minutos'}
-          </p>
+          <h2>Iniciar sesión</h2>
+          <p className="login-sub">Bienvenido de nuevo</p>
 
           <div className="login-fields">
-            {mode === 'register' && (
-              <div className="form-group">
-                <label className="form-label">Nombre del profesional</label>
-                <input className="form-input" placeholder="" value={form.nombre} onChange={set('nombre')} />
-              </div>
-            )}
             <div className="form-group">
               <label className="form-label">Email <span className="req">*</span></label>
               <input className="form-input" type="email" placeholder="" value={form.email} onChange={set('email')} required />
@@ -153,27 +145,26 @@ export default function LoginPage() {
             {error && <div className="alert alert-danger">{error}</div>}
 
             <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
-              {loading ? <><span className="spinner" style={{width:16,height:16}} /> Procesando...</> : mode === 'login' ? 'Ingresar' : 'Crear cuenta'}
+              {loading ? <><span className="spinner" style={{width:16,height:16}} /> Procesando...</> : 'Ingresar'}
             </button>
 
-            {mode === 'login' && (
-              <div style={{ textAlign: 'center' }}>
-                <button
-                  type="button"
-                  style={{ background: 'none', border: 'none', color: 'var(--c-text-3)', fontSize: '.8rem', cursor: 'pointer', textDecoration: 'underline' }}
-                  onClick={openForgot}
-                >
-                  ¿Olvidaste tu contraseña?
-                </button>
-              </div>
-            )}
+            <div style={{ textAlign: 'center' }}>
+              <button
+                type="button"
+                style={{ background: 'none', border: 'none', color: 'var(--c-text-3)', fontSize: '.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+                onClick={openForgot}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
 
             <div style={{ textAlign: 'center', fontSize: '.83rem', color: 'var(--c-text-3)' }}>
-              {mode === 'login' ? '¿No tenés cuenta?' : '¿Ya tenés cuenta?'}{' '}
-              <button type="button" style={{ background: 'none', border: 'none', color: 'var(--c-primary)', fontWeight: 600, cursor: 'pointer', fontSize: 'inherit' }}
-                onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError('') }}>
-                {mode === 'login' ? 'Registrate' : 'Iniciá sesión'}
-              </button>
+              ¿Querés Clingest para tu consultorio?{' '}
+              <a href="https://wa.me/5491144755339?text=Hola%2C%20quiero%20info%20sobre%20Clingest"
+                target="_blank" rel="noopener noreferrer"
+                style={{ color: 'var(--c-primary)', fontWeight: 600, textDecoration: 'none' }}>
+                Contactanos
+              </a>
             </div>
           </div>
         </form>

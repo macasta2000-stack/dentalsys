@@ -237,4 +237,16 @@ export const _http = {
     create: (body) => request('POST', '/comprobantes', body),
     delete: (id) => request('DELETE', `/comprobantes/${id}`),
   },
+  ai: {
+    generate: (tipo, contexto) => request('POST', '/ai', { tipo, contexto }),
+    usage: () => request('GET', '/ai'),
+  },
+  chat: {
+    conversaciones: () => request('GET', '/chat'),
+    crearConversacion: (tipo, targetType, targetId) => request('POST', '/chat', { tipo, target_type: targetType, target_id: targetId }),
+    mensajes: (convId, after) => request('GET', `/chat/mensajes?conversacion_id=${convId}${after ? `&after=${after}` : ''}`),
+    enviar: (convId, texto) => request('POST', '/chat/mensajes', { conversacion_id: convId, texto }),
+    marcarLeido: (convId) => request('PATCH', '/chat/mensajes', { conversacion_id: convId }),
+    miembros: () => request('GET', '/chat/miembros'),
+  },
 }

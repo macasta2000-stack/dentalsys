@@ -297,7 +297,18 @@ export default function AgendaPage() {
       const fecha = new Date(turno.fecha_hora).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
       const hora  = new Date(turno.fecha_hora).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
       const nombre = turno.paciente_nombre?.split(' ')[0] ?? ''
-      const texto = `Hola ${nombre}! Te recordamos tu turno en el consultorio el *${fecha}* a las *${hora} hs*${turno.motivo ? ` (${turno.motivo})` : ''}.\n¡Te esperamos!`
+      // Try AI-composed message, fallback to template
+      let texto
+      try {
+        const res = await api.ai.generate('whatsapp', {
+          tipo_mensaje: 'recordatorio_turno',
+          paciente_nombre: nombre,
+          detalles: `Turno el ${fecha} a las ${hora}${turno.motivo ? `, motivo: ${turno.motivo}` : ''}`,
+        })
+        texto = res.texto
+      } catch {
+        texto = `Hola ${nombre}! Te recordamos tu turno en el consultorio el *${fecha}* a las *${hora} hs*${turno.motivo ? ` (${turno.motivo})` : ''}.\n¡Te esperamos!`
+      }
       window.open(`https://wa.me/${normalized}?text=${encodeURIComponent(texto)}`, '_blank')
       return
     }
