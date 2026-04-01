@@ -9,6 +9,7 @@ import { format } from 'date-fns'
 import TrialBanner from './TrialBanner'
 import OfflineIndicator from './OfflineIndicator'
 import { AICreditBadge } from './AIAssistant'
+import ChatPanel, { ChatButton } from './ChatPanel'
 import { startSyncManager } from '../lib/syncManager'
 
 // feature: requiere esa feature del plan | module: clave para permisos por rol
@@ -53,6 +54,7 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
 
   // ── Búsqueda global (topbar) ──────────────────────────────────────
   const [searchQ, setSearchQ] = useState('')
@@ -767,6 +769,10 @@ export default function Layout() {
           </div>
         </div>
       )}
+
+      {/* ── Chat del equipo ── */}
+      {!chatOpen && <ChatButton onClick={() => setChatOpen(true)} />}
+      <ChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   )
 }

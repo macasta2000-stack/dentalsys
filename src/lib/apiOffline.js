@@ -305,6 +305,7 @@ export const apiOffline = {
   booking: _http.booking,
   encuestas: _http.encuestas,
   ai: _http.ai,
+  chat: _http.chat,
 }
 
 export default apiOffline
