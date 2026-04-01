@@ -14,6 +14,11 @@ const REG_MAX = 5           // max registrations per IP per window
 const REG_WINDOW = 60 * 60  // 1 hour
 
 export async function onRequestPost({ request, env }) {
+  // ── Registro público DESHABILITADO ──
+  // Las cuentas se crean únicamente desde el panel de administración (superadmin).
+  // Para solicitar una cuenta, contactar por WhatsApp.
+  return err('El registro público está deshabilitado. Contactanos por WhatsApp para crear tu cuenta.', 403)
+
   // Rate limit by IP — prevent mass account creation
   const ip = request.headers.get('cf-connecting-ip') ||
               request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'

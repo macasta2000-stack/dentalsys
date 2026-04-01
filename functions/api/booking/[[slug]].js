@@ -54,6 +54,17 @@ export async function onRequestGet({ request, env, params }) {
     const fecha = url.searchParams.get('fecha')
     if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return err('Fecha requerida (YYYY-MM-DD)', 400)
 
+    // Validate: no past dates
+    const hoy = new Date().toISOString().slice(0, 10)
+    if (fecha < hoy) return ok([]) // no slots for past dates
+
+    // Validate: check if the day of week is a working day
+    const diasLaborales = (config.dias_laborales || '1,2,3,4,5').split(',').map(Number)
+    const diaSemana = new Date(fecha + 'T12:00:00').getDay() // 0=domingo
+    // Convert JS day (0=Sun) to ISO (1=Mon..7=Sun) for comparison with config
+    const diaISO = diaSemana === 0 ? 7 : diaSemana
+    if (!diasLaborales.includes(diaISO)) return ok([]) // non-working day
+
     const profesionalId = url.searchParams.get('profesional_id')
     const duracion = Number(config.duracion_turno_default) || 30
     const inicio = config.horario_inicio || '08:00'
@@ -143,15 +154,57 @@ export async function onRequestPost({ request, env, params }) {
   if (!body.fecha_hora) return err('La fecha y hora son requeridas')
   if (!body.telefono?.trim() && !body.email?.trim()) return err('Telefono o email requerido para contactarte')
 
-  // Rate limit: max 5 solicitudes per phone/email per day
+  // Validate: no past dates
+  const hoy = new Date().toISOString().slice(0, 10)
+  const fechaSolicitud = body.fecha_hora.slice(0, 10)
+  if (fechaSolicitud < hoy) return err('No se pueden solicitar turnos para fechas pasadas', 400)
+
+  // Validate: working day
+  const diasLaborales = (config.dias_laborales || '1,2,3,4,5').split(',').map(Number)
+  const diaSemana = new Date(fechaSolicitud + 'T12:00:00').getDay()
+  const diaISO = diaSemana === 0 ? 7 : diaSemana
+  if (!diasLaborales.includes(diaISO)) return err('El consultorio no atiende ese dia', 400)
+
+  // Rate limit: max 3 solicitudes per phone/email per day
   const identifier = body.telefono?.trim() || body.email?.trim()
   if (identifier) {
-    const hoy = new Date().toISOString().slice(0, 10)
     const countSql = `SELECT COUNT(*) as cnt FROM solicitudes_turno
       WHERE tenant_id = ?1 AND DATE(created_at) = ?2 AND (telefono = ?3 OR email = ?3)`
     const countR = await env.DB.prepare(countSql).bind(config.tenant_id, hoy, identifier).first()
-    if (countR?.cnt >= 5) return err('Superaste el limite de solicitudes por hoy. Intenta manana.', 429)
+    if (countR?.cnt >= 3) return err('Ya tenés solicitudes pendientes. Esperá la confirmación del consultorio.', 429)
   }
+
+  // Limit: max 2 pending solicitudes per patient (phone/email) at any time
+  if (identifier) {
+    const pendingSql = `SELECT COUNT(*) as cnt FROM solicitudes_turno
+      WHERE tenant_id = ?1 AND estado = 'pendiente' AND (telefono = ?2 OR email = ?2)`
+    const pendingR = await env.DB.prepare(pendingSql).bind(config.tenant_id, identifier).first()
+    if (pendingR?.cnt >= 2) return err('Ya tenés 2 solicitudes pendientes. Esperá que el consultorio las confirme o rechace.', 429)
+  }
+
+  // Verify the slot is still available (double-check against turnos + solicitudes)
+  const slotFecha = fechaSolicitud
+  const slotHH = Number(body.fecha_hora.split('T')[1]?.split(':')[0] ?? 0)
+  const slotMM = Number(body.fecha_hora.split('T')[1]?.split(':')[1] ?? 0)
+  const slotStart = slotHH * 60 + slotMM
+  const duracion = Number(config.duracion_turno_default) || 30
+  const slotEnd = slotStart + duracion
+
+  const conflictSql = `
+    SELECT fecha_hora, duracion_minutos FROM turnos
+    WHERE tenant_id = ?1 AND DATE(fecha_hora) = ?2 AND estado NOT IN ('cancelado','ausente')
+    UNION ALL
+    SELECT fecha_hora, duracion_minutos FROM solicitudes_turno
+    WHERE tenant_id = ?1 AND DATE(fecha_hora) = ?2 AND estado = 'pendiente'`
+  const conflicts = await env.DB.prepare(conflictSql).bind(config.tenant_id, slotFecha).all()
+  const hasConflict = (conflicts?.results ?? []).some(t => {
+    const tHH = Number(t.fecha_hora.split('T')[1]?.split(':')[0] ?? 0)
+    const tMM = Number(t.fecha_hora.split('T')[1]?.split(':')[1] ?? 0)
+    const tStart = tHH * 60 + tMM
+    const tEnd = tStart + (t.duracion_minutos || duracion)
+    return slotStart < tEnd && slotEnd > tStart
+  })
+  if (hasConflict) return err('Ese horario ya no está disponible. Elegí otro.', 409)
 
   try {
     const solicitud = await env.DB.prepare(`
