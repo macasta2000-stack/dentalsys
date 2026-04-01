@@ -1099,3 +1099,112 @@ input, select, textarea { font-family: inherit; }
     flex: 1 1 100%;
   }
 }
+
+/* ========================================================
+   AI ASSISTANT — Buttons, results, credit badge
+   ======================================================== */
+.btn-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1.5px solid #8B5CF6;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #F5F3FF, #EDE9FE);
+  color: #7C3AED;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-ai:hover:not(:disabled) {
+  background: linear-gradient(135deg, #EDE9FE, #DDD6FE);
+  border-color: #7C3AED;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, .2);
+}
+.btn-ai:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.btn-ai-sm {
+  padding: 4px 10px;
+  font-size: .75rem;
+}
+.ai-icon {
+  font-size: 1em;
+  color: #8B5CF6;
+}
+.ai-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ai-error {
+  font-size: .78rem;
+  color: var(--c-danger);
+  margin-top: 4px;
+}
+.ai-result {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #FAFAF9, #F5F3FF);
+  border: 1px solid #DDD6FE;
+  border-radius: var(--radius-sm);
+  font-size: .84rem;
+  line-height: 1.55;
+  color: var(--c-text);
+}
+.ai-result-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #7C3AED;
+  margin-bottom: 8px;
+}
+.ai-result-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-result-compact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ai-result-compact .ai-result-text {
+  flex: 1;
+}
+.ai-suggestion-panel,
+.ai-whatsapp-panel,
+.ai-summary-panel {
+  margin-top: 8px;
+}
+.ai-credit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: var(--c-surface-2);
+  border: 1px solid #DDD6FE;
+  border-radius: 100px;
+  font-size: .72rem;
+  font-weight: 600;
+  color: #7C3AED;
+}
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #DDD6FE;
+  border-top-color: #7C3AED;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

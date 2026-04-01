@@ -304,6 +304,7 @@ export const apiOffline = {
   gastos: _http.gastos,
   booking: _http.booking,
   encuestas: _http.encuestas,
+  ai: _http.ai,
 }
 
 export default apiOffline

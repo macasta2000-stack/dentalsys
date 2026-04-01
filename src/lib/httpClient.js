@@ -237,4 +237,8 @@ export const _http = {
     create: (body) => request('POST', '/comprobantes', body),
     delete: (id) => request('DELETE', `/comprobantes/${id}`),
   },
+  ai: {
+    generate: (tipo, contexto) => request('POST', '/ai', { tipo, contexto }),
+    usage: () => request('GET', '/ai'),
+  },
 }

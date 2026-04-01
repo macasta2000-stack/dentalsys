@@ -8,6 +8,7 @@ import { api } from '../lib/api'
 import { format } from 'date-fns'
 import TrialBanner from './TrialBanner'
 import OfflineIndicator from './OfflineIndicator'
+import { AICreditBadge } from './AIAssistant'
 import { startSyncManager } from '../lib/syncManager'
 
 // feature: requiere esa feature del plan | module: clave para permisos por rol
@@ -345,6 +346,7 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-footer">
+          <AICreditBadge />
           <div className="sidebar-consultorio">
             <div className="sc-name">
               {COLAB_ROLES.has(user?.rol) && user?.nombre

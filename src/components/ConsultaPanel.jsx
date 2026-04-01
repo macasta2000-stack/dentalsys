@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { imprimirReceta } from '../lib/recetaPDF'
+import { AIClinicalNotes } from './AIAssistant'
 import { format, parseISO, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -310,6 +311,12 @@ export default function ConsultaPanel({ turno, onClose, onUpdated }) {
               value={descripcion}
               onChange={e => setDescripcion(e.target.value)}
               aria-label="Descripción de la evolución"
+            />
+            <AIClinicalNotes
+              notasBreves={descripcion}
+              pacienteInfo={paciente ? `${paciente.nombre} ${paciente.apellido}${paciente.fecha_nacimiento ? `, ${calcEdad(paciente.fecha_nacimiento)} años` : ''}${paciente.alergias ? `, alergias: ${paciente.alergias}` : ''}` : ''}
+              evolucionesPrevias={evoluciones.slice(0, 3).map(e => `[${e.fecha?.slice(0, 10) ?? ''}] ${e.tipo ?? ''}: ${e.descripcion?.slice(0, 80) ?? ''}`).join('\n')}
+              onResult={(texto) => setDescripcion(texto)}
             />
           </div>
 
