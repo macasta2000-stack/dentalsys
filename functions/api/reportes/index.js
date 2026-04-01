@@ -23,6 +23,8 @@ export async function onRequestGet({ request, data, env }) {
     if (tipo === 'prestaciones') return await reportePrestaciones(env.DB, user.sub, anio, mes)
     if (tipo === 'pacientes') return await reportePacientes(env.DB, user.sub, anio, mes)
     if (tipo === 'comisiones') return await reporteComisiones(env.DB, user.sub, anio, mes)
+    if (tipo === 'rentabilidad') return await reporteRentabilidad(env.DB, user.sub, anio, mes)
+    if (tipo === 'profesional') return await reporteProfesional(env.DB, user.sub, anio, mes)
     return err('tipo no válido')
   } catch (e) {
     console.error('[reportes] Error:', e?.message)
@@ -205,5 +207,80 @@ async function reportePacientes(DB, tenantId, anio, mes) {
     pacientes_atendidos: atendidosRes.results ?? [],
     deuda_total: deudaRes?.total_deuda ?? 0,
     cantidad_deudores: deudaRes?.cantidad ?? 0,
+  })
+}
+
+async function reporteRentabilidad(DB, tenantId, anio, mes) {
+  // Últimos 6 meses de ingresos vs gastos
+  const meses = []
+  for (let i = 5; i >= 0; i--) {
+    let m = mes - i, a = anio
+    while (m <= 0) { m += 12; a-- }
+    const desde = `${a}-${String(m).padStart(2,'0')}-01`
+    const hasta = `${a}-${String(m).padStart(2,'0')}-31 23:59:59`
+
+    const ingresosR = await DB.prepare(
+      `SELECT COALESCE(SUM(monto), 0) as total FROM pagos WHERE tenant_id = ?1 AND fecha >= ?2 AND fecha <= ?3 AND anulado = 0`
+    ).bind(tenantId, desde, hasta).first()
+
+    const gastosR = await DB.prepare(
+      `SELECT COALESCE(SUM(monto), 0) as total FROM gastos WHERE tenant_id = ?1 AND fecha >= ?2 AND fecha <= ?3`
+    ).bind(tenantId, desde, hasta).first()
+
+    meses.push({
+      periodo: `${a}-${String(m).padStart(2,'0')}`,
+      mes_label: new Date(a, m - 1).toLocaleString('es-AR', { month: 'short' }),
+      ingresos: ingresosR?.total ?? 0,
+      gastos: gastosR?.total ?? 0,
+      margen: (ingresosR?.total ?? 0) - (gastosR?.total ?? 0),
+    })
+  }
+
+  // Gastos por categoría del mes actual
+  const desdeActual = `${anio}-${String(mes).padStart(2,'0')}-01`
+  const hastaActual = `${anio}-${String(mes).padStart(2,'0')}-31`
+  const gastosCatR = await DB.prepare(
+    `SELECT categoria, COALESCE(SUM(monto), 0) as total, COUNT(*) as cantidad
+     FROM gastos WHERE tenant_id = ?1 AND fecha >= ?2 AND fecha <= ?3
+     GROUP BY categoria ORDER BY total DESC`
+  ).bind(tenantId, desdeActual, hastaActual).all()
+
+  const totalIngresos = meses[5]?.ingresos ?? 0
+  const totalGastos = meses[5]?.gastos ?? 0
+
+  return ok({
+    periodo: { anio, mes },
+    meses,
+    mes_actual: {
+      ingresos: totalIngresos,
+      gastos: totalGastos,
+      margen: totalIngresos - totalGastos,
+      margen_pct: totalIngresos > 0 ? ((totalIngresos - totalGastos) / totalIngresos * 100).toFixed(1) : 0,
+    },
+    gastos_por_categoria: gastosCatR?.results ?? [],
+  })
+}
+
+async function reporteProfesional(DB, tenantId, anio, mes) {
+  const desde = `${anio}-${String(mes).padStart(2,'0')}-01`
+  const hasta = `${anio}-${String(mes).padStart(2,'0')}-31 23:59:59`
+
+  const profR = await DB.prepare(`
+    SELECT c.id, c.nombre, c.apellido,
+           COUNT(DISTINCT CASE WHEN t.estado = 'completado' THEN t.id END) as turnos_completados,
+           COUNT(DISTINCT CASE WHEN t.estado = 'ausente' THEN t.id END) as turnos_ausentes,
+           COUNT(DISTINCT CASE WHEN t.estado IN ('programado','confirmado') THEN t.id END) as turnos_pendientes,
+           COALESCE(SUM(CASE WHEN t.estado = 'completado' THEN e.monto ELSE 0 END), 0) as total_facturado
+    FROM colaboradores c
+    LEFT JOIN turnos t ON t.profesional_id = c.id AND t.tenant_id = c.tenant_id AND t.fecha_hora >= ?2 AND t.fecha_hora <= ?3
+    LEFT JOIN evoluciones e ON e.turno_id = t.id AND e.tenant_id = c.tenant_id
+    WHERE c.tenant_id = ?1 AND c.activo = 1 AND c.rol = 'profesional'
+    GROUP BY c.id
+    ORDER BY total_facturado DESC
+  `).bind(tenantId, desde, hasta).all()
+
+  return ok({
+    periodo: { anio, mes },
+    profesionales: profR?.results ?? [],
   })
 }

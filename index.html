@@ -3,14 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0C2340" />
-    <meta name="description" content="DentalSys — Sistema de Gestión para Consultorios Odontológicos" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="description" content="Clingest — Sistema de Gestión Médica para cualquier especialización" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Clingest" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦷</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%233b82f6'/><text y='.9em' font-size='65' x='18'>🏥</text></svg>" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%233b82f6'/><text y='.9em' font-size='65' x='18'>🏥</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet" />
-    <title>DentalSys</title>
+    <title>Clingest</title>
   </head>
   <body>
     <div id="root"></div>
@@ -18,7 +23,20 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {})
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              // Detectar nueva versión del SW
+              reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing
+                newSW?.addEventListener('statechange', () => {
+                  if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                    // Hay actualización disponible — el banner en React lo maneja
+                    window.dispatchEvent(new CustomEvent('sw-update-available'))
+                  }
+                })
+              })
+            })
+            .catch(() => {})
         })
       }
     </script>

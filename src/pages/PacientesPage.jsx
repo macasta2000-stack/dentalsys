@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../contexts/ToastContext'
+import { formatPhone } from '../lib/utils'
 
 const EMPTY_FORM = {
   nombre: '', apellido: '', dni: '', fecha_nacimiento: '',
@@ -10,6 +12,7 @@ const EMPTY_FORM = {
 
 export default function PacientesPage() {
   const navigate = useNavigate()
+  const addToast = useToast()
   const [pacientes, setPacientes] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -18,13 +21,18 @@ export default function PacientesPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showArchivados, setShowArchivados] = useState(false)
+  const [confirmModal, setConfirmModal] = useState(null) // { paciente }
 
-  useEffect(() => { load('') }, [])
+  useEffect(() => { load('') }, [showArchivados])
+
+  const normalizar = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
   async function load(q) {
     setLoading(true)
-    const data = await api.pacientes.list(q).catch(() => [])
-    setPacientes(data)
+    const estado = showArchivados ? 'archivado' : 'activo'
+    const data = await api.pacientes.list(normalizar(q ?? search), estado).catch(() => [])
+    setPacientes(Array.isArray(data) ? data : [])
     setLoading(false)
   }
 
@@ -33,6 +41,16 @@ export default function PacientesPage() {
     setSearch(q)
     clearTimeout(searchTimerRef.current)
     searchTimerRef.current = setTimeout(() => load(q), 300)
+  }
+
+  async function handleReactivar(p) {
+    try {
+      await api.pacientes.update(p.id, { estado: 'activo' })
+      setPacientes(prev => prev.filter(x => x.id !== p.id))
+      addToast(`Paciente ${p.apellido}, ${p.nombre} reactivado`, 'success')
+    } catch (e) {
+      addToast(e.message || 'No se pudo reactivar el paciente.', 'error')
+    }
   }
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
@@ -45,9 +63,10 @@ export default function PacientesPage() {
       const p = await api.pacientes.create(form)
       setPacientes(prev => [...prev, p].sort((a, b) => a.apellido.localeCompare(b.apellido)))
       setModal(false); setForm(EMPTY_FORM)
+      addToast(`Paciente ${p.apellido}, ${p.nombre} creado correctamente`, 'success')
       navigate(`/pacientes/${p.id}`)
     } catch (e) {
-      setError('No se pudo guardar el paciente. Nombre y apellido son obligatorios.')
+      setError(e.message || 'No se pudo guardar el paciente. Verificá nombre y apellido.')
     } finally {
       setSaving(false)
     }
@@ -55,9 +74,28 @@ export default function PacientesPage() {
 
   function openModal() { setForm(EMPTY_FORM); setError(''); setModal(true) }
 
+  function handleDelete(p) {
+    setConfirmModal({ paciente: p })
+  }
+
+  async function confirmarArchivar() {
+    const p = confirmModal?.paciente
+    if (!p) return
+    setConfirmModal(null)
+    try {
+      await api.pacientes.delete(p.id)
+      setPacientes(prev => prev.filter(x => x.id !== p.id))
+      addToast(`Paciente ${p.apellido}, ${p.nombre} archivado correctamente`, 'success')
+    } catch (e) {
+      addToast(e.message || 'No se pudo archivar el paciente.', 'error')
+    }
+  }
+
   const calcEdad = (fn) => {
     if (!fn) return null
-    const diff = Date.now() - new Date(fn).getTime()
+    const nacimiento = new Date(fn)
+    if (nacimiento > new Date()) return null // fecha futura — inválida
+    const diff = Date.now() - nacimiento.getTime()
     return Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25))
   }
 
@@ -66,14 +104,17 @@ export default function PacientesPage() {
       <div className="page-header">
         <div>
           <div className="page-title">Pacientes</div>
-          <div className="page-sub">{pacientes.length} pacientes activos</div>
+          <div className="page-sub">{pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''} {showArchivados ? 'archivados' : 'activos'}</div>
         </div>
         <div className="page-actions">
           <div className="search-bar">
             <span className="search-icon">🔍</span>
-            <input placeholder="Buscar por nombre, apellido o DNI..." value={search} onChange={handleSearch} />
+            <input placeholder="Buscar por nombre, apellido, DNI o teléfono..." value={search} onChange={handleSearch} />
           </div>
-          <button className="btn btn-primary" onClick={openModal}>+ Nuevo paciente</button>
+          <button className={`btn btn-sm ${showArchivados ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => { setShowArchivados(v => !v); setSearch('') }}>
+            {showArchivados ? 'Ver activos' : 'Ver archivados'}
+          </button>
+          {!showArchivados && <button className="btn btn-primary" onClick={openModal}>+ Nuevo paciente</button>}
         </div>
       </div>
 
@@ -106,7 +147,7 @@ export default function PacientesPage() {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--c-primary-light)', color: 'var(--c-primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '.8rem', fontFamily: 'var(--font-display)', flexShrink: 0 }}>
-                          {p.apellido[0]}{p.nombre[0]}
+                          {p.apellido?.[0]}{p.nombre?.[0]}
                         </div>
                         <div>
                           <div className="td-main">{p.apellido}, {p.nombre}</div>
@@ -115,10 +156,14 @@ export default function PacientesPage() {
                     </td>
                     <td className="text-sm text-muted">{p.dni || '—'}</td>
                     <td className="text-sm">{(() => { const e = calcEdad(p.fecha_nacimiento); return e != null ? `${e} años` : '—' })()}</td>
-                    <td className="text-sm">{p.telefono || '—'}</td>
+                    <td className="text-sm">{formatPhone(p.telefono)}</td>
                     <td>{p.obra_social ? <span className="badge badge-info">{p.obra_social}</span> : <span className="text-muted text-sm">Particular</span>}</td>
                     <td onClick={e => e.stopPropagation()}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/pacientes/${p.id}`)}>Ver ficha →</button>
+                      {showArchivados ? (
+                        <button className="btn btn-success btn-sm" onClick={() => handleReactivar(p)}>Reactivar</button>
+                      ) : (
+                        <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/pacientes/${p.id}`)}>Ver ficha →</button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -128,9 +173,29 @@ export default function PacientesPage() {
         )}
       </div>
 
+      {/* Modal confirmación archivar */}
+      {confirmModal && (
+        <div className="modal-overlay">
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Archivar paciente</span>
+              <button className="btn-close" onClick={() => setConfirmModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p>¿Archivás a <strong>{confirmModal.paciente.apellido}, {confirmModal.paciente.nombre}</strong>?</p>
+              <p className="text-sm text-muted" style={{ marginTop: 6 }}>El paciente queda archivado y puede reactivarse desde "Ver archivados".</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setConfirmModal(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={confirmarArchivar}>Archivar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal nuevo paciente */}
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">👤 Nuevo Paciente</span>
@@ -151,7 +216,7 @@ export default function PacientesPage() {
                 <div className="form-row cols-3">
                   <div className="form-group">
                     <label className="form-label">DNI</label>
-                    <input className="form-input" placeholder="30.000.000" value={form.dni} onChange={set('dni')} />
+                    <input className="form-input" placeholder="" value={form.dni} onChange={set('dni')} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Fecha de nacimiento</label>
@@ -170,7 +235,7 @@ export default function PacientesPage() {
                 <div className="form-row cols-2">
                   <div className="form-group">
                     <label className="form-label">Teléfono</label>
-                    <input className="form-input" placeholder="11-5555-0000" value={form.telefono} onChange={set('telefono')} />
+                    <input className="form-input" placeholder="" value={form.telefono} onChange={set('telefono')} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Email</label>
@@ -180,7 +245,7 @@ export default function PacientesPage() {
                 <div className="form-row cols-3">
                   <div className="form-group">
                     <label className="form-label">Obra social</label>
-                    <input className="form-input" placeholder="OSDE, Swiss Medical..." value={form.obra_social} onChange={set('obra_social')} />
+                    <input className="form-input" placeholder="" value={form.obra_social} onChange={set('obra_social')} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">N° afiliado</label>
@@ -188,12 +253,12 @@ export default function PacientesPage() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Plan</label>
-                    <input className="form-input" placeholder="210, Gold, Premium..." value={form.plan_obra_social} onChange={set('plan_obra_social')} />
+                    <input className="form-input" placeholder="" value={form.plan_obra_social} onChange={set('plan_obra_social')} />
                   </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Notas / Antecedentes</label>
-                  <textarea className="form-input" rows={3} value={form.notas} onChange={set('notas')} placeholder="Alergias, medicación, antecedentes relevantes..." />
+                  <textarea className="form-input" rows={3} value={form.notas} onChange={set('notas')} placeholder="" />
                 </div>
                 {error && <div className="alert alert-danger">{error}</div>}
               </div>

@@ -1,18 +1,26 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../contexts/ToastContext'
+import { useAuth } from '../contexts/AuthContext'
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { imprimirComprobante } from '../lib/comprobantePDF'
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n ?? 0)
 
 const METODO_LABEL = {
   efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito',
-  tarjeta_credito: 'Crédito', obra_social: 'Obra Social', mercadopago: 'MercadoPago',
+  tarjeta_credito: 'Crédito', obra_social: 'Obra Social',
   cheque: 'Cheque', otro: 'Otro'
 }
 
 export default function CajaPage() {
+  const { user, configuracion } = useAuth()
+  const addToast = useToast()
+  // recepcionista CAN register payments (checkout is their main job) but CANNOT void/delete them
+  const canPay = ['tenant', 'superadmin', 'admin', 'profesional', 'recepcionista'].includes(user?.rol)
+  const canVoid = ['tenant', 'superadmin', 'admin', 'profesional'].includes(user?.rol)
   const [range, setRange] = useState('hoy')
   const [pagos, setPagos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,17 +34,19 @@ export default function CajaPage() {
   const [pagoSaving, setPagoSaving] = useState(false)
   const [rangoDesde, setRangoDesde] = useState('')
   const [rangoHasta, setRangoHasta] = useState('')
+  const [modalConfirm, setModalConfirm] = useState(null) // { msg, onConfirm }
 
   const rangeParams = () => {
     const now = new Date()
-    if (range === 'hoy') return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() }
-    if (range === 'mes') return { from: startOfMonth(now).toISOString(), to: endOfMonth(now).toISOString() }
+    const toYMD = (d) => format(d, 'yyyy-MM-dd')
+    if (range === 'hoy') return { from: toYMD(now), to: toYMD(now) }
+    if (range === 'mes') return { from: toYMD(startOfMonth(now)), to: toYMD(endOfMonth(now)) }
     if (range === 'mes_ant') {
       const prev = subMonths(now, 1)
-      return { from: startOfMonth(prev).toISOString(), to: endOfMonth(prev).toISOString() }
+      return { from: toYMD(startOfMonth(prev)), to: toYMD(endOfMonth(prev)) }
     }
     if (range === 'custom' && rangoDesde && rangoHasta) {
-      return { from: startOfDay(new Date(rangoDesde)).toISOString(), to: endOfDay(new Date(rangoHasta)).toISOString() }
+      return { from: rangoDesde, to: rangoHasta }
     }
     return {}
   }
@@ -53,9 +63,10 @@ export default function CajaPage() {
 
   async function loadMonthly() {
     const now = new Date()
+    const toYMD = (d) => format(d, 'yyyy-MM-dd')
     const months = Array.from({ length: 6 }, (_, i) => subMonths(now, 5 - i))
     const results = await Promise.all(months.map(m =>
-      api.pagos.list({ from: startOfMonth(m).toISOString(), to: endOfMonth(m).toISOString() })
+      api.pagos.list({ from: toYMD(startOfMonth(m)), to: toYMD(endOfMonth(m)) })
         .then(ps => ({
           mes: format(m, 'MMM', { locale: es }),
           total: (ps ?? []).reduce((s, p) => s + Number(p.monto), 0),
@@ -74,7 +85,7 @@ export default function CajaPage() {
     } catch {}
   }
 
-  // Filtrar pagos
+  // Filtrar pagos (excluir anulados de los totales)
   const pagosFiltrados = pagos.filter(p => {
     if (!filtroOS) return true
     if (filtroOS === '_sin_os') return p.metodo_pago !== 'obra_social'
@@ -82,12 +93,15 @@ export default function CajaPage() {
     return (p.paciente_obra_social ?? '') === filtroOS || (p.concepto ?? '').includes(filtroOS)
   })
 
-  const total = pagosFiltrados.reduce((s, p) => s + Number(p.monto), 0)
-  const totalParticular = pagosFiltrados.filter(p => p.metodo_pago !== 'obra_social').reduce((s, p) => s + Number(p.monto), 0)
-  const totalOS = pagosFiltrados.filter(p => p.metodo_pago === 'obra_social').reduce((s, p) => s + Number(p.monto_os ?? p.monto), 0)
-  const totalCopago = pagosFiltrados.filter(p => p.metodo_pago === 'obra_social').reduce((s, p) => s + Number(p.monto_copago ?? 0), 0)
+  // Solo pagos no anulados para cálculo de totales
+  const pagosActivos = pagosFiltrados.filter(p => !p.anulado || p.anulado === 0)
 
-  const porMetodo = pagosFiltrados.reduce((acc, p) => {
+  const total = pagosActivos.reduce((s, p) => s + Number(p.monto), 0)
+  const totalParticular = pagosActivos.filter(p => p.metodo_pago !== 'obra_social').reduce((s, p) => s + Number(p.monto), 0)
+  const totalOS = pagosActivos.filter(p => p.metodo_pago === 'obra_social').reduce((s, p) => s + Number(p.monto_os ?? 0), 0)
+  const totalCopago = pagosActivos.filter(p => p.metodo_pago === 'obra_social').reduce((s, p) => s + Number(p.monto_copago ?? 0), 0)
+
+  const porMetodo = pagosActivos.reduce((acc, p) => {
     acc[p.metodo_pago] = (acc[p.metodo_pago] ?? 0) + Number(p.monto)
     return acc
   }, {})
@@ -112,17 +126,42 @@ export default function CajaPage() {
       await api.pagos.create({ paciente_id: pagoDeudor.id, monto: Number(pagoForm.monto), metodo_pago: pagoForm.metodo_pago, concepto: pagoForm.concepto })
       setDeudores(prev => prev.map(p => p.id === pagoDeudor.id ? { ...p, saldo: (p.saldo ?? 0) + Number(pagoForm.monto) } : p).filter(p => (p.saldo ?? 0) < 0))
       setModalPago(false)
-      await loadPagos()
-    } catch (e) { alert(e.message) }
+      loadPagos().catch(() => {}) // refresh en segundo plano — no bloquear ni mostrar error si falla
+    } catch (e) { addToast(e.message || 'Error al registrar el pago', 'error') }
     finally { setPagoSaving(false) }
   }
 
-  async function handleAnularPago(pago) {
-    if (!confirm(`¿Anular el pago de ${fmt(pago.monto)} de ${pago.paciente_nombre || 'este paciente'}? Esta acción revertirá el saldo del paciente.`)) return
+  async function handleGenerarComprobante(pago) {
     try {
-      await api.pagos.anular(pago.id)
-      await loadPagos()
-    } catch (e) { alert('No se pudo anular el pago. Intentá nuevamente o contactá al soporte.') }
+      const comp = await api.comprobantes.create({
+        paciente_id: pago.paciente_id,
+        pago_id: pago.id,
+        items: [{
+          descripcion: pago.concepto || 'Atención médica',
+          cantidad: 1,
+          precio_unitario: Number(pago.monto),
+          subtotal: Number(pago.monto),
+        }],
+        descuento: 0,
+        notas: pago.metodo_pago ? `Método de pago: ${METODO_LABEL[pago.metodo_pago] ?? pago.metodo_pago}` : null,
+      })
+      imprimirComprobante({ comprobante: comp, consultorio: comp.consultorio, paciente: comp.paciente })
+    } catch (e) {
+      addToast(e.message || 'Error al generar comprobante', 'error')
+    }
+  }
+
+  async function handleAnularPago(pago) {
+    setModalConfirm({
+      msg: `¿Anular el pago de ${fmt(pago.monto)} de ${pago.paciente_nombre || 'este paciente'}? Esta acción revertirá el saldo del paciente.`,
+      onConfirm: async () => {
+        try {
+          await api.pagos.anular(pago.id)
+          await loadPagos()
+          addToast('Pago anulado', 'success')
+        } catch (e) { addToast('No se pudo anular el pago. Intentá nuevamente.', 'error') }
+      }
+    })
   }
 
   return (
@@ -138,22 +177,26 @@ export default function CajaPage() {
         }
       `}</style>
 
-      <div className="page-header no-print">
-        <div className="page-title">Caja</div>
-        <div className="page-actions" style={{ flexWrap: 'wrap' }}>
+      <div className="no-print" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="page-title">Caja</div>
+          <button className="btn btn-secondary btn-sm" onClick={handleCierreDeCaja}>Cierre de caja</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {['hoy', 'mes', 'mes_ant', 'custom'].map(r => (
-            <button key={r} className={`btn btn-sm ${range === r ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(r)}>
-              {r === 'hoy' ? 'Hoy' : r === 'mes' ? 'Este mes' : r === 'mes_ant' ? 'Mes anterior' : 'Rango personalizado'}
+            <button key={r} className={`btn btn-sm ${range === r ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ minWidth: 'auto' }}
+              onClick={() => setRange(r)}>
+              {r === 'hoy' ? '📅 Hoy' : r === 'mes' ? '📆 Este mes' : r === 'mes_ant' ? '⏪ Mes anterior' : '📊 Rango personalizado'}
             </button>
           ))}
           {range === 'custom' && (
             <>
-              <input type="date" className="form-input" style={{ width: 150, padding: '5px 10px', fontSize: '.82rem' }} value={rangoDesde} onChange={e => setRangoDesde(e.target.value)} />
-              <span className="text-sm text-muted">hasta</span>
-              <input type="date" className="form-input" style={{ width: 150, padding: '5px 10px', fontSize: '.82rem' }} value={rangoHasta} onChange={e => setRangoHasta(e.target.value)} />
+              <input type="date" className="form-input" style={{ width: 160, padding: '6px 10px', fontSize: '.85rem' }} value={rangoDesde} onChange={e => setRangoDesde(e.target.value)} />
+              <span style={{ color: 'var(--c-text-3)', fontSize: '.85rem' }}>hasta</span>
+              <input type="date" className="form-input" style={{ width: 160, padding: '6px 10px', fontSize: '.85rem' }} value={rangoHasta} onChange={e => setRangoHasta(e.target.value)} />
             </>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={handleCierreDeCaja}>Cierre de caja</button>
         </div>
       </div>
 
@@ -317,7 +360,7 @@ export default function CajaPage() {
                 <tbody>
                   {pagosFiltrados.map(p => {
                     const esOS = p.metodo_pago === 'obra_social'
-                    const montoOS = esOS ? Number(p.monto_os ?? p.monto) : 0
+                    const montoOS = esOS ? Number(p.monto_os ?? 0) : 0
                     const montoCopago = esOS ? Number(p.monto_copago ?? 0) : 0
                     const montoParticular = !esOS ? Number(p.monto) : 0
                     const anulado = !!p.anulado
@@ -331,8 +374,11 @@ export default function CajaPage() {
                         <td style={{ textAlign: 'right' }} className="text-sm">{montoOS > 0 ? fmt(montoOS) : '—'}</td>
                         <td style={{ textAlign: 'right' }} className="text-sm">{montoCopago > 0 ? fmt(montoCopago) : '—'}</td>
                         <td style={{ textAlign: 'right' }} className="font-semibold">{fmt(p.monto)}</td>
-                        <td>
+                        <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
                           {!anulado && (
+                            <button className="btn btn-ghost btn-sm" title="Generar comprobante" onClick={() => handleGenerarComprobante(p)}>🧾</button>
+                          )}
+                          {canVoid && !anulado && (
                             <button className="btn btn-danger btn-sm" onClick={() => handleAnularPago(p)}>Anular</button>
                           )}
                         </td>
@@ -358,7 +404,7 @@ export default function CajaPage() {
 
       {/* Modal registrar pago a deudor */}
       {modalPago && pagoDeudor && (
-        <div className="modal-overlay" onClick={() => setModalPago(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Registrar pago — {pagoDeudor.apellido}, {pagoDeudor.nombre}</span>
@@ -412,13 +458,28 @@ export default function CajaPage() {
                       <td className="text-sm">{p.obra_social || <span className="text-muted">Particular</span>}</td>
                       <td className="text-sm">{p.telefono || '—'}</td>
                       <td style={{ textAlign: 'right' }} className="font-semibold text-danger">{fmt(Math.abs(p.saldo ?? 0))}</td>
-                      <td><button className="btn btn-success btn-sm" onClick={() => openPagoDeudor(p)}>Registrar pago</button></td>
+                      <td>{canPay && <button className="btn btn-success btn-sm" onClick={() => openPagoDeudor(p)}>Registrar pago</button>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal confirmación genérico */}
+      {modalConfirm && (
+        <div className="modal-overlay">
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-body" style={{ padding: 24 }}>
+              <p style={{ fontSize: '.95rem', marginBottom: 20 }}>{modalConfirm.msg}</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => setModalConfirm(null)}>Cancelar</button>
+                <button className="btn btn-danger" onClick={async () => { setModalConfirm(null); await modalConfirm.onConfirm() }}>Confirmar</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

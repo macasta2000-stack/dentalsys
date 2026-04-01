@@ -7,3 +7,12 @@ binding = "DB"
 database_name = "dentalsys-db"
 database_id = "a619cc4f-6427-48de-8665-2e3a6d019357"
 
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "medsys-adjuntos"
+
+# KV namespace para rate limiting distribuido
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "3a02be081f1a4ce3a0ab58b5f5a6f5f8"
+

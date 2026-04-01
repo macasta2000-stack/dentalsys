@@ -10,14 +10,16 @@ const ALLOWED_FIELDS = {
   evoluciones: ['paciente_id','descripcion','tipo','notas','fecha','piezas_tratadas','prestacion_id','prestacion_nombre','monto'],
   odontograma: ['paciente_id','numero_pieza','estado','caras_afectadas','notas'],
   presupuestos: ['paciente_id','numero','total','estado','notas','fecha_vencimiento','total_pagado'],
-  configuracion: ['nombre_consultorio','nombre_profesional','matricula','especialidad','telefono','email','direccion','ciudad','cuit','duracion_turno_default','horario_inicio','horario_fin','dias_laborales','moneda','firma_digital','onboarding_completado','workflow_etapas','notif_email_turno','notif_email_cancelacion','notif_whatsapp_numero','plantillas_evoluciones','catalogo_farmacos','tipo_cobro','pais','permisos_roles'],
+  configuracion: ['nombre_consultorio','nombre_profesional','matricula','especialidad','telefono','email','direccion','ciudad','cuit','duracion_turno_default','horario_inicio','horario_fin','dias_laborales','moneda','firma_digital','onboarding_completado','workflow_etapas','notif_email_turno','notif_email_cancelacion','notif_whatsapp_numero','plantillas_evoluciones','catalogo_farmacos','tipo_cobro','pais','permisos_roles','booking_slug','booking_activo'],
   convenios: ['nombre_os','prestacion_id','monto_os','monto_copago','activo'],
   recetas: ['paciente_id','profesional_id','profesional_nombre','profesional_matricula','fecha','medicamentos','indicaciones'],
   giftcards: ['codigo','monto_original','monto_restante','estado','paciente_id','fecha_vencimiento','notas'],
+  gastos: ['fecha','descripcion','categoria','monto','metodo_pago','proveedor','comprobante_nro','notas'],
+  solicitudes_turno: ['nombre','apellido','telefono','email','fecha_hora','duracion_minutos','motivo','profesional_id','estado','notas_internas'],
 }
 
 // Tablas que tienen columna updated_at
-const HAS_UPDATED_AT = new Set(['pacientes','turnos','presupuestos','odontograma','insumos','configuracion','prestaciones','evoluciones'])
+const HAS_UPDATED_AT = new Set(['pacientes','turnos','presupuestos','odontograma','insumos','configuracion','prestaciones','evoluciones','gastos'])
 
 // Filtra un objeto body para quedarse solo con campos permitidos de la tabla
 export function pick(table, data) {

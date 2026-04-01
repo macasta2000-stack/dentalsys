@@ -1,0 +1,14 @@
+{
+  "name": "clingest-bot-tester",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Bot de pruebas automáticas — ClinGest beta QA",
+  "scripts": {
+    "start": "node index.mjs",
+    "browser": "node index.mjs --browser",
+    "install-browser": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

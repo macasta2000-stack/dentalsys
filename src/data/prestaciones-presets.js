@@ -1,0 +1,345 @@
+// Presets de prestaciones por especialidad médica
+// Precios en ARS (referencia 2025)
+
+export const ESPECIALIDADES_LISTA = [
+  { value: 'clinica_medica',      label: 'Clínica Médica / Médico General' },
+  { value: 'pediatria',           label: 'Pediatría' },
+  { value: 'ginecologia',         label: 'Ginecología y Obstetricia' },
+  { value: 'cardiologia',         label: 'Cardiología' },
+  { value: 'traumatologia',       label: 'Traumatología y Ortopedia' },
+  { value: 'kinesiologia',        label: 'Kinesiología y Fisioterapia' },
+  { value: 'oftalmologia',        label: 'Oftalmología' },
+  { value: 'dermatologia',        label: 'Dermatología' },
+  { value: 'neurologia',          label: 'Neurología' },
+  { value: 'psicologia',          label: 'Psicología' },
+  { value: 'psiquiatria',         label: 'Psiquiatría' },
+  { value: 'nutricion',           label: 'Nutrición y Dietética' },
+  { value: 'gastroenterologia',   label: 'Gastroenterología' },
+  { value: 'endocrinologia',      label: 'Endocrinología' },
+  { value: 'urologia',            label: 'Urología' },
+  { value: 'odontologia',         label: 'Odontología' },
+  { value: 'fonoaudiologia',      label: 'Fonoaudiología' },
+  { value: 'terapia_ocupacional', label: 'Terapia Ocupacional' },
+  { value: 'medicina_laboral',    label: 'Medicina Laboral / del Trabajo' },
+  { value: 'oncologia',           label: 'Oncología' },
+  { value: 'reumatologia',        label: 'Reumatología' },
+  { value: 'infectologia',        label: 'Infectología' },
+  { value: 'cirugia',             label: 'Cirugía General' },
+  { value: 'policlinico',         label: 'Policlínico / Multiespecialidad' },
+]
+
+export const PRESETS_ESPECIALIDADES = {
+  clinica_medica: {
+    label: 'Clínica Médica / Médico General',
+    prestaciones: [
+      { codigo: 'CC001', nombre: 'Consulta clínica', categoria: 'consulta', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'CC002', nombre: 'Control de paciente crónico', categoria: 'control', precio: 12000, duracion_minutos: 20 },
+      { codigo: 'CC003', nombre: 'Certificado médico', categoria: 'general', precio: 5000, duracion_minutos: 10 },
+      { codigo: 'CC004', nombre: 'Solicitud de laboratorio', categoria: 'general', precio: 4000, duracion_minutos: 10 },
+      { codigo: 'CC005', nombre: 'Electrocardiograma (ECG)', categoria: 'estudios', precio: 8000, duracion_minutos: 15 },
+      { codigo: 'CC006', nombre: 'Control de hipertensión', categoria: 'control', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'CC007', nombre: 'Control de diabetes', categoria: 'control', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'CC008', nombre: 'Plan de vacunación adulto', categoria: 'preventiva', precio: 6000, duracion_minutos: 10 },
+      { codigo: 'CC009', nombre: 'Urgencia médica', categoria: 'urgencia', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'CC010', nombre: 'Derivación a especialista', categoria: 'general', precio: 4000, duracion_minutos: 10 },
+    ]
+  },
+  pediatria: {
+    label: 'Pediatría',
+    prestaciones: [
+      { codigo: 'PD001', nombre: 'Consulta pediátrica', categoria: 'consulta', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'PD002', nombre: 'Control del niño sano (0-12m)', categoria: 'control', precio: 14000, duracion_minutos: 30 },
+      { codigo: 'PD003', nombre: 'Control del niño sano (1-5a)', categoria: 'control', precio: 13000, duracion_minutos: 25 },
+      { codigo: 'PD004', nombre: 'Control del niño sano (6-12a)', categoria: 'control', precio: 12000, duracion_minutos: 20 },
+      { codigo: 'PD005', nombre: 'Vacunación (1 dosis)', categoria: 'preventiva', precio: 7000, duracion_minutos: 15 },
+      { codigo: 'PD006', nombre: 'Certificado escolar / apto físico', categoria: 'general', precio: 5000, duracion_minutos: 15 },
+      { codigo: 'PD007', nombre: 'Urgencia pediátrica', categoria: 'urgencia', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'PD008', nombre: 'Evaluación del desarrollo psicomotor', categoria: 'estudios', precio: 16000, duracion_minutos: 30 },
+      { codigo: 'PD009', nombre: 'Control adolescente', categoria: 'control', precio: 12000, duracion_minutos: 20 },
+      { codigo: 'PD010', nombre: 'Puericultura / lactancia', categoria: 'consulta', precio: 13000, duracion_minutos: 25 },
+    ]
+  },
+  ginecologia: {
+    label: 'Ginecología y Obstetricia',
+    prestaciones: [
+      { codigo: 'GN001', nombre: 'Consulta ginecológica', categoria: 'consulta', precio: 18000, duracion_minutos: 30 },
+      { codigo: 'GN002', nombre: 'PAP (Papanicolaou)', categoria: 'estudios', precio: 10000, duracion_minutos: 20 },
+      { codigo: 'GN003', nombre: 'Colposcopía', categoria: 'estudios', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'GN004', nombre: 'Ecografía ginecológica', categoria: 'estudios', precio: 18000, duracion_minutos: 20 },
+      { codigo: 'GN005', nombre: 'Ecografía obstétrica', categoria: 'estudios', precio: 20000, duracion_minutos: 25 },
+      { codigo: 'GN006', nombre: 'Control prenatal', categoria: 'control', precio: 16000, duracion_minutos: 30 },
+      { codigo: 'GN007', nombre: 'Colocación DIU', categoria: 'procedimiento', precio: 30000, duracion_minutos: 30 },
+      { codigo: 'GN008', nombre: 'Retiro DIU', categoria: 'procedimiento', precio: 12000, duracion_minutos: 20 },
+      { codigo: 'GN009', nombre: 'Implante anticonceptivo', categoria: 'procedimiento', precio: 35000, duracion_minutos: 20 },
+      { codigo: 'GN010', nombre: 'Papanicolaou + HPV', categoria: 'estudios', precio: 14000, duracion_minutos: 20 },
+    ]
+  },
+  cardiologia: {
+    label: 'Cardiología',
+    prestaciones: [
+      { codigo: 'CD001', nombre: 'Consulta cardiológica', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'CD002', nombre: 'Electrocardiograma (ECG)', categoria: 'estudios', precio: 9000, duracion_minutos: 15 },
+      { codigo: 'CD003', nombre: 'Holter 24 horas', categoria: 'estudios', precio: 35000, duracion_minutos: 20 },
+      { codigo: 'CD004', nombre: 'Ecocardiograma', categoria: 'estudios', precio: 40000, duracion_minutos: 45 },
+      { codigo: 'CD005', nombre: 'Ergometría (prueba de esfuerzo)', categoria: 'estudios', precio: 45000, duracion_minutos: 60 },
+      { codigo: 'CD006', nombre: 'Monitoreo ambulatorio PA (MAPA)', categoria: 'estudios', precio: 30000, duracion_minutos: 20 },
+      { codigo: 'CD007', nombre: 'Control cardiológico', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'CD008', nombre: 'Certificado cardiológico para deporte', categoria: 'general', precio: 12000, duracion_minutos: 20 },
+    ]
+  },
+  traumatologia: {
+    label: 'Traumatología y Ortopedia',
+    prestaciones: [
+      { codigo: 'TR001', nombre: 'Consulta traumatológica', categoria: 'consulta', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'TR002', nombre: 'Infiltración (cortisona/PRP)', categoria: 'procedimiento', precio: 35000, duracion_minutos: 20 },
+      { codigo: 'TR003', nombre: 'Colocación de yeso', categoria: 'procedimiento', precio: 18000, duracion_minutos: 30 },
+      { codigo: 'TR004', nombre: 'Retiro de yeso', categoria: 'procedimiento', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'TR005', nombre: 'Vendaje funcional', categoria: 'procedimiento', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'TR006', nombre: 'Interpretación de RX/RMN/TAC', categoria: 'estudios', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'TR007', nombre: 'Control post-quirúrgico', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'TR008', nombre: 'Certificado de incapacidad / ART', categoria: 'general', precio: 12000, duracion_minutos: 15 },
+      { codigo: 'TR009', nombre: 'Artrocentesis', categoria: 'procedimiento', precio: 28000, duracion_minutos: 20 },
+    ]
+  },
+  kinesiologia: {
+    label: 'Kinesiología y Fisioterapia',
+    prestaciones: [
+      { codigo: 'KN001', nombre: 'Evaluación kinesiológica inicial', categoria: 'consulta', precio: 18000, duracion_minutos: 45 },
+      { codigo: 'KN002', nombre: 'Sesión de kinesiología', categoria: 'rehabilitacion', precio: 12000, duracion_minutos: 40 },
+      { codigo: 'KN003', nombre: 'Sesión de rehabilitación post-quirúrgica', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+      { codigo: 'KN004', nombre: 'Electroterapia (TENS/interferencial)', categoria: 'procedimiento', precio: 8000, duracion_minutos: 20 },
+      { codigo: 'KN005', nombre: 'Ultrasonido terapéutico', categoria: 'procedimiento', precio: 7000, duracion_minutos: 15 },
+      { codigo: 'KN006', nombre: 'Kinesiotaping', categoria: 'procedimiento', precio: 9000, duracion_minutos: 20 },
+      { codigo: 'KN007', nombre: 'Drenaje linfático manual', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 50 },
+      { codigo: 'KN008', nombre: 'Pilates terapéutico (individual)', categoria: 'rehabilitacion', precio: 15000, duracion_minutos: 45 },
+      { codigo: 'KN009', nombre: 'Rehabilitación neurológica', categoria: 'rehabilitacion', precio: 16000, duracion_minutos: 50 },
+      { codigo: 'KN010', nombre: 'Certificado kinesioterapéutico', categoria: 'general', precio: 5000, duracion_minutos: 10 },
+    ]
+  },
+  oftalmologia: {
+    label: 'Oftalmología',
+    prestaciones: [
+      { codigo: 'OF001', nombre: 'Consulta oftalmológica', categoria: 'consulta', precio: 20000, duracion_minutos: 20 },
+      { codigo: 'OF002', nombre: 'Fondo de ojo', categoria: 'estudios', precio: 14000, duracion_minutos: 15 },
+      { codigo: 'OF003', nombre: 'Tonometría (presión intraocular)', categoria: 'estudios', precio: 8000, duracion_minutos: 10 },
+      { codigo: 'OF004', nombre: 'Campimetría visual', categoria: 'estudios', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'OF005', nombre: 'Prescripción de anteojos / lentes', categoria: 'consulta', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'OF006', nombre: 'OCT (tomografía de coherencia óptica)', categoria: 'estudios', precio: 30000, duracion_minutos: 20 },
+      { codigo: 'OF007', nombre: 'Láser retina / YAG', categoria: 'procedimiento', precio: 50000, duracion_minutos: 30 },
+      { codigo: 'OF008', nombre: 'Control glaucoma', categoria: 'control', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'OF009', nombre: 'Control diabético ocular', categoria: 'control', precio: 15000, duracion_minutos: 20 },
+    ]
+  },
+  dermatologia: {
+    label: 'Dermatología',
+    prestaciones: [
+      { codigo: 'DR001', nombre: 'Consulta dermatológica', categoria: 'consulta', precio: 20000, duracion_minutos: 20 },
+      { codigo: 'DR002', nombre: 'Dermatoscopía', categoria: 'estudios', precio: 14000, duracion_minutos: 20 },
+      { codigo: 'DR003', nombre: 'Biopsia cutánea', categoria: 'procedimiento', precio: 25000, duracion_minutos: 20 },
+      { codigo: 'DR004', nombre: 'Criocirugía (1-3 lesiones)', categoria: 'procedimiento', precio: 18000, duracion_minutos: 20 },
+      { codigo: 'DR005', nombre: 'Extirpación de nevus / lunar', categoria: 'cirugia', precio: 30000, duracion_minutos: 25 },
+      { codigo: 'DR006', nombre: 'Extirpación de quiste sebáceo', categoria: 'cirugia', precio: 28000, duracion_minutos: 25 },
+      { codigo: 'DR007', nombre: 'Tratamiento con luz pulsada (IPL)', categoria: 'estetica', precio: 40000, duracion_minutos: 30 },
+      { codigo: 'DR008', nombre: 'Peeling químico', categoria: 'estetica', precio: 25000, duracion_minutos: 30 },
+      { codigo: 'DR009', nombre: 'Control de psoriasis / eczema', categoria: 'control', precio: 15000, duracion_minutos: 20 },
+    ]
+  },
+  neurologia: {
+    label: 'Neurología',
+    prestaciones: [
+      { codigo: 'NR001', nombre: 'Consulta neurológica', categoria: 'consulta', precio: 25000, duracion_minutos: 40 },
+      { codigo: 'NR002', nombre: 'Electroencefalograma (EEG)', categoria: 'estudios', precio: 35000, duracion_minutos: 60 },
+      { codigo: 'NR003', nombre: 'Electromiografía (EMG)', categoria: 'estudios', precio: 40000, duracion_minutos: 45 },
+      { codigo: 'NR004', nombre: 'Control epilepsia / neurológico', categoria: 'control', precio: 18000, duracion_minutos: 30 },
+      { codigo: 'NR005', nombre: 'Evaluación cognitiva / demencia', categoria: 'estudios', precio: 30000, duracion_minutos: 60 },
+      { codigo: 'NR006', nombre: 'Evaluación cefaleas / migraña', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'NR007', nombre: 'Infiltración puntos gatillo', categoria: 'procedimiento', precio: 28000, duracion_minutos: 20 },
+    ]
+  },
+  psicologia: {
+    label: 'Psicología',
+    prestaciones: [
+      { codigo: 'PS001', nombre: 'Evaluación psicológica inicial', categoria: 'consulta', precio: 20000, duracion_minutos: 60 },
+      { codigo: 'PS002', nombre: 'Sesión individual (50 min)', categoria: 'rehabilitacion', precio: 18000, duracion_minutos: 50 },
+      { codigo: 'PS003', nombre: 'Sesión de pareja', categoria: 'rehabilitacion', precio: 22000, duracion_minutos: 60 },
+      { codigo: 'PS004', nombre: 'Sesión familiar', categoria: 'rehabilitacion', precio: 25000, duracion_minutos: 70 },
+      { codigo: 'PS005', nombre: 'Sesión de niños / adolescentes', categoria: 'rehabilitacion', precio: 18000, duracion_minutos: 45 },
+      { codigo: 'PS006', nombre: 'Test psicológico (Rorschach/TAT)', categoria: 'estudios', precio: 35000, duracion_minutos: 90 },
+      { codigo: 'PS007', nombre: 'Certificado psicológico / pericial', categoria: 'general', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'PS008', nombre: 'Psicoterapia cognitivo-conductual', categoria: 'rehabilitacion', precio: 18000, duracion_minutos: 50 },
+    ]
+  },
+  psiquiatria: {
+    label: 'Psiquiatría',
+    prestaciones: [
+      { codigo: 'PQ001', nombre: 'Consulta psiquiátrica inicial', categoria: 'consulta', precio: 30000, duracion_minutos: 60 },
+      { codigo: 'PQ002', nombre: 'Control psiquiátrico / medicación', categoria: 'control', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'PQ003', nombre: 'Evaluación diagnóstica', categoria: 'estudios', precio: 35000, duracion_minutos: 60 },
+      { codigo: 'PQ004', nombre: 'Interconsulta psiquiátrica', categoria: 'consulta', precio: 25000, duracion_minutos: 30 },
+      { codigo: 'PQ005', nombre: 'Certificado psiquiátrico / pericial', categoria: 'general', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'PQ006', nombre: 'Sesión de psicoterapia psiquiátrica', categoria: 'rehabilitacion', precio: 25000, duracion_minutos: 50 },
+    ]
+  },
+  nutricion: {
+    label: 'Nutrición y Dietética',
+    prestaciones: [
+      { codigo: 'NT001', nombre: 'Consulta nutricional inicial', categoria: 'consulta', precio: 16000, duracion_minutos: 45 },
+      { codigo: 'NT002', nombre: 'Control nutricional', categoria: 'control', precio: 12000, duracion_minutos: 30 },
+      { codigo: 'NT003', nombre: 'Evaluación antropométrica', categoria: 'estudios', precio: 10000, duracion_minutos: 20 },
+      { codigo: 'NT004', nombre: 'Plan alimentario personalizado', categoria: 'general', precio: 18000, duracion_minutos: 45 },
+      { codigo: 'NT005', nombre: 'Nutrición deportiva', categoria: 'consulta', precio: 18000, duracion_minutos: 45 },
+      { codigo: 'NT006', nombre: 'Nutrición pediátrica', categoria: 'consulta', precio: 15000, duracion_minutos: 40 },
+      { codigo: 'NT007', nombre: 'Nutrición en embarazo / lactancia', categoria: 'consulta', precio: 16000, duracion_minutos: 40 },
+      { codigo: 'NT008', nombre: 'Nutrición clínica (DM/HTA/obesidad)', categoria: 'consulta', precio: 16000, duracion_minutos: 40 },
+    ]
+  },
+  gastroenterologia: {
+    label: 'Gastroenterología',
+    prestaciones: [
+      { codigo: 'GE001', nombre: 'Consulta gastroenterológica', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'GE002', nombre: 'Endoscopía digestiva alta', categoria: 'procedimiento', precio: 60000, duracion_minutos: 30 },
+      { codigo: 'GE003', nombre: 'Colonoscopía', categoria: 'procedimiento', precio: 70000, duracion_minutos: 45 },
+      { codigo: 'GE004', nombre: 'Test de aliento H. pylori', categoria: 'estudios', precio: 18000, duracion_minutos: 30 },
+      { codigo: 'GE005', nombre: 'Ecografía abdominal', categoria: 'estudios', precio: 20000, duracion_minutos: 20 },
+      { codigo: 'GE006', nombre: 'Control hepatitis / hígado graso', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'GE007', nombre: 'Control enfermedad inflamatoria intestinal', categoria: 'control', precio: 16000, duracion_minutos: 25 },
+    ]
+  },
+  endocrinologia: {
+    label: 'Endocrinología',
+    prestaciones: [
+      { codigo: 'EN001', nombre: 'Consulta endocrinológica', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'EN002', nombre: 'Control de diabetes', categoria: 'control', precio: 16000, duracion_minutos: 25 },
+      { codigo: 'EN003', nombre: 'Control de tiroides', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'EN004', nombre: 'Control de obesidad / sobrepeso', categoria: 'control', precio: 16000, duracion_minutos: 25 },
+      { codigo: 'EN005', nombre: 'Ecografía tiroidea', categoria: 'estudios', precio: 18000, duracion_minutos: 20 },
+      { codigo: 'EN006', nombre: 'Punción tiroidea (PAAF)', categoria: 'procedimiento', precio: 30000, duracion_minutos: 20 },
+      { codigo: 'EN007', nombre: 'Control de osteoporosis', categoria: 'control', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'EN008', nombre: 'Control hormonal / fertilidad', categoria: 'consulta', precio: 18000, duracion_minutos: 25 },
+    ]
+  },
+  urologia: {
+    label: 'Urología',
+    prestaciones: [
+      { codigo: 'UR001', nombre: 'Consulta urológica', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'UR002', nombre: 'Ecografía renal/vesical', categoria: 'estudios', precio: 18000, duracion_minutos: 20 },
+      { codigo: 'UR003', nombre: 'Uroflujometría', categoria: 'estudios', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'UR004', nombre: 'Control de próstata (PSA)', categoria: 'control', precio: 12000, duracion_minutos: 15 },
+      { codigo: 'UR005', nombre: 'Biopsia de próstata', categoria: 'procedimiento', precio: 55000, duracion_minutos: 30 },
+      { codigo: 'UR006', nombre: 'Vasectomía', categoria: 'cirugia', precio: 80000, duracion_minutos: 30 },
+      { codigo: 'UR007', nombre: 'Litotripsia / cálculo renal', categoria: 'procedimiento', precio: 65000, duracion_minutos: 45 },
+      { codigo: 'UR008', nombre: 'Control de incontinencia urinaria', categoria: 'control', precio: 16000, duracion_minutos: 25 },
+    ]
+  },
+  odontologia: {
+    label: 'Odontología',
+    prestaciones: [
+      { codigo: 'OD001', nombre: 'Consulta / Diagnóstico', categoria: 'consulta', precio: 12000, duracion_minutos: 30 },
+      { codigo: 'OD002', nombre: 'Limpieza dental (profilaxis)', categoria: 'preventiva', precio: 18000, duracion_minutos: 45 },
+      { codigo: 'OD003', nombre: 'Extracción simple', categoria: 'cirugia', precio: 18000, duracion_minutos: 30 },
+      { codigo: 'OD004', nombre: 'Extracción de muela del juicio', categoria: 'cirugia', precio: 45000, duracion_minutos: 60 },
+      { codigo: 'OD005', nombre: 'Obturación (carie) resina', categoria: 'procedimiento', precio: 16000, duracion_minutos: 30 },
+      { codigo: 'OD006', nombre: 'Endodoncia unirradicular', categoria: 'procedimiento', precio: 55000, duracion_minutos: 90 },
+      { codigo: 'OD007', nombre: 'Endodoncia birradicular', categoria: 'procedimiento', precio: 70000, duracion_minutos: 90 },
+      { codigo: 'OD008', nombre: 'Corona de porcelana', categoria: 'procedimiento', precio: 90000, duracion_minutos: 60 },
+      { codigo: 'OD009', nombre: 'Blanqueamiento dental', categoria: 'estetica', precio: 40000, duracion_minutos: 60 },
+      { codigo: 'OD010', nombre: 'Carilla de porcelana', categoria: 'estetica', precio: 80000, duracion_minutos: 90 },
+      { codigo: 'OD011', nombre: 'Implante dental', categoria: 'procedimiento', precio: 200000, duracion_minutos: 90 },
+      { codigo: 'OD012', nombre: 'Urgencia odontológica', categoria: 'urgencia', precio: 20000, duracion_minutos: 30 },
+    ]
+  },
+  fonoaudiologia: {
+    label: 'Fonoaudiología',
+    prestaciones: [
+      { codigo: 'FN001', nombre: 'Evaluación fonoaudiológica inicial', categoria: 'consulta', precio: 18000, duracion_minutos: 60 },
+      { codigo: 'FN002', nombre: 'Sesión individual de fonoaudiología', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+      { codigo: 'FN003', nombre: 'Terapia del lenguaje (niños)', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+      { codigo: 'FN004', nombre: 'Terapia de deglución', categoria: 'rehabilitacion', precio: 15000, duracion_minutos: 45 },
+      { codigo: 'FN005', nombre: 'Rehabilitación de voz', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+      { codigo: 'FN006', nombre: 'Audiometría', categoria: 'estudios', precio: 14000, duracion_minutos: 30 },
+      { codigo: 'FN007', nombre: 'Rehabilitación auditiva', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+    ]
+  },
+  terapia_ocupacional: {
+    label: 'Terapia Ocupacional',
+    prestaciones: [
+      { codigo: 'TO001', nombre: 'Evaluación TO inicial', categoria: 'consulta', precio: 18000, duracion_minutos: 60 },
+      { codigo: 'TO002', nombre: 'Sesión de terapia ocupacional', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+      { codigo: 'TO003', nombre: 'Sesión pediátrica (integración sensorial)', categoria: 'rehabilitacion', precio: 15000, duracion_minutos: 45 },
+      { codigo: 'TO004', nombre: 'Adaptación de entorno / domicilio', categoria: 'consulta', precio: 20000, duracion_minutos: 60 },
+      { codigo: 'TO005', nombre: 'Confección de ortesis', categoria: 'procedimiento', precio: 25000, duracion_minutos: 45 },
+      { codigo: 'TO006', nombre: 'Rehabilitación de miembro superior', categoria: 'rehabilitacion', precio: 14000, duracion_minutos: 45 },
+    ]
+  },
+  medicina_laboral: {
+    label: 'Medicina Laboral / del Trabajo',
+    prestaciones: [
+      { codigo: 'ML001', nombre: 'Examen preocupacional', categoria: 'consulta', precio: 20000, duracion_minutos: 30 },
+      { codigo: 'ML002', nombre: 'Examen periódico', categoria: 'consulta', precio: 18000, duracion_minutos: 25 },
+      { codigo: 'ML003', nombre: 'Examen de egreso', categoria: 'consulta', precio: 18000, duracion_minutos: 25 },
+      { codigo: 'ML004', nombre: 'Certificado de aptitud médica', categoria: 'general', precio: 12000, duracion_minutos: 20 },
+      { codigo: 'ML005', nombre: 'Evaluación ergonómica', categoria: 'estudios', precio: 30000, duracion_minutos: 60 },
+      { codigo: 'ML006', nombre: 'Audiometría laboral', categoria: 'estudios', precio: 14000, duracion_minutos: 30 },
+      { codigo: 'ML007', nombre: 'Espirometría laboral', categoria: 'estudios', precio: 14000, duracion_minutos: 20 },
+      { codigo: 'ML008', nombre: 'Accidente laboral / ART', categoria: 'urgencia', precio: 22000, duracion_minutos: 30 },
+    ]
+  },
+  oncologia: {
+    label: 'Oncología',
+    prestaciones: [
+      { codigo: 'OC001', nombre: 'Consulta oncológica', categoria: 'consulta', precio: 30000, duracion_minutos: 45 },
+      { codigo: 'OC002', nombre: 'Control oncológico', categoria: 'control', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'OC003', nombre: 'Interconsulta oncológica', categoria: 'consulta', precio: 25000, duracion_minutos: 30 },
+      { codigo: 'OC004', nombre: 'Evaluación post-tratamiento', categoria: 'control', precio: 25000, duracion_minutos: 40 },
+    ]
+  },
+  reumatologia: {
+    label: 'Reumatología',
+    prestaciones: [
+      { codigo: 'RM001', nombre: 'Consulta reumatológica', categoria: 'consulta', precio: 25000, duracion_minutos: 40 },
+      { codigo: 'RM002', nombre: 'Control de artritis / lupus', categoria: 'control', precio: 18000, duracion_minutos: 25 },
+      { codigo: 'RM003', nombre: 'Infiltración articular', categoria: 'procedimiento', precio: 30000, duracion_minutos: 20 },
+      { codigo: 'RM004', nombre: 'Control de osteoporosis', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'RM005', nombre: 'Evaluación de fibromialgia', categoria: 'estudios', precio: 22000, duracion_minutos: 35 },
+    ]
+  },
+  infectologia: {
+    label: 'Infectología',
+    prestaciones: [
+      { codigo: 'IN001', nombre: 'Consulta infectológica', categoria: 'consulta', precio: 25000, duracion_minutos: 40 },
+      { codigo: 'IN002', nombre: 'Control HIV / SIDA', categoria: 'control', precio: 18000, duracion_minutos: 25 },
+      { codigo: 'IN003', nombre: 'Consejería pre/post test HIV', categoria: 'consulta', precio: 15000, duracion_minutos: 30 },
+      { codigo: 'IN004', nombre: 'Vacunación adulto (1 dosis)', categoria: 'preventiva', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'IN005', nombre: 'Control hepatitis B/C', categoria: 'control', precio: 16000, duracion_minutos: 20 },
+      { codigo: 'IN006', nombre: 'Plan de viaje / vacunación viajero', categoria: 'consulta', precio: 20000, duracion_minutos: 30 },
+    ]
+  },
+  cirugia: {
+    label: 'Cirugía General',
+    prestaciones: [
+      { codigo: 'CG001', nombre: 'Consulta quirúrgica', categoria: 'consulta', precio: 25000, duracion_minutos: 30 },
+      { codigo: 'CG002', nombre: 'Curación de herida simple', categoria: 'procedimiento', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'CG003', nombre: 'Sutura de herida (1-5 puntos)', categoria: 'procedimiento', precio: 22000, duracion_minutos: 20 },
+      { codigo: 'CG004', nombre: 'Extirpación de lipoma', categoria: 'cirugia', precio: 40000, duracion_minutos: 30 },
+      { codigo: 'CG005', nombre: 'Drenaje de absceso', categoria: 'procedimiento', precio: 28000, duracion_minutos: 20 },
+      { codigo: 'CG006', nombre: 'Control post-operatorio', categoria: 'control', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'CG007', nombre: 'Biopsia excisional', categoria: 'procedimiento', precio: 45000, duracion_minutos: 30 },
+      { codigo: 'CG008', nombre: 'Retiro de puntos', categoria: 'procedimiento', precio: 8000, duracion_minutos: 10 },
+    ]
+  },
+  policlinico: {
+    label: 'Policlínico / Multiespecialidad',
+    prestaciones: [
+      { codigo: 'PC001', nombre: 'Consulta médica general', categoria: 'consulta', precio: 15000, duracion_minutos: 20 },
+      { codigo: 'PC002', nombre: 'Consulta especialista', categoria: 'consulta', precio: 22000, duracion_minutos: 30 },
+      { codigo: 'PC003', nombre: 'Urgencia médica', categoria: 'urgencia', precio: 25000, duracion_minutos: 30 },
+      { codigo: 'PC004', nombre: 'Electrocardiograma', categoria: 'estudios', precio: 9000, duracion_minutos: 15 },
+      { codigo: 'PC005', nombre: 'Extracción de sangre', categoria: 'procedimiento', precio: 5000, duracion_minutos: 10 },
+      { codigo: 'PC006', nombre: 'Vacunación', categoria: 'preventiva', precio: 8000, duracion_minutos: 15 },
+      { codigo: 'PC007', nombre: 'Certificado médico', categoria: 'general', precio: 5000, duracion_minutos: 10 },
+      { codigo: 'PC008', nombre: 'Control de presión arterial', categoria: 'control', precio: 4000, duracion_minutos: 10 },
+      { codigo: 'PC009', nombre: 'Curación / vendaje', categoria: 'procedimiento', precio: 10000, duracion_minutos: 15 },
+      { codigo: 'PC010', nombre: 'Inyectable / medicación IM/IV', categoria: 'procedimiento', precio: 6000, duracion_minutos: 10 },
+    ]
+  },
+}

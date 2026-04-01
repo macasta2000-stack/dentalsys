@@ -1280,11 +1280,13 @@ export default function PacienteDetailPage() {
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card-header">
               <span className="card-title">Planes de pago en cuotas</span>
-              <button className="btn btn-primary btn-sm" onClick={() => {
-                setPlanForm({ concepto: '', monto_total: '', cuotas: 3, fecha_inicio: format(new Date(), 'yyyy-MM-dd') })
-                setPlanError('')
-                setModalPlan(true)
-              }}>+ Nuevo plan</button>
+              {user?.rol !== 'recepcionista' && (
+                <button className="btn btn-primary btn-sm" onClick={() => {
+                  setPlanForm({ concepto: '', monto_total: '', cuotas: 3, fecha_inicio: format(new Date(), 'yyyy-MM-dd') })
+                  setPlanError('')
+                  setModalPlan(true)
+                }}>+ Nuevo plan</button>
+              )}
             </div>
             {planesPago.length === 0 ? (
               <div className="empty-state"><div className="empty-icon">💳</div><div className="empty-title">Sin planes de pago</div><div className="empty-sub">Creá un plan para dividir el costo del tratamiento en cuotas mensuales</div></div>
@@ -1369,7 +1371,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Editar ficha del paciente */}
       {editPaciente && (
-        <div className="modal-overlay" onClick={() => setEditPaciente(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Editar ficha del paciente</span>
@@ -1464,7 +1466,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Editar pieza odontograma */}
       {piezaSel && (
-        <div className="modal-overlay" onClick={() => setPiezaSel(null)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Pieza {piezaSel}</span>
@@ -1492,7 +1494,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Nueva/Editar evolución */}
       {modalEvol && (
-        <div className="modal-overlay" onClick={() => setModalEvol(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{editEvol ? 'Editar evolución' : 'Nueva Evolución'}</span>
@@ -1557,7 +1559,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Registrar pago */}
       {modalPago && (
-        <div className="modal-overlay" onClick={() => setModalPago(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Registrar Pago</span>
@@ -1608,7 +1610,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Nuevo/Editar turno desde ficha */}
       {modalTurno && (
-        <div className="modal-overlay" onClick={() => setModalTurno(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{editTurno ? 'Editar turno' : 'Nuevo turno'}</span>
@@ -1667,7 +1669,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Nueva receta imprimible */}
       {modalReceta && (
-        <div className="modal-overlay" onClick={() => setModalReceta(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg receta-print" onClick={e => e.stopPropagation()} style={{ maxHeight: '95vh' }}>
             <div className="modal-header">
               <span className="modal-title">Nueva Receta</span>
@@ -1810,7 +1812,7 @@ export default function PacienteDetailPage() {
       )}
       {/* MODAL: Indicaciones post-operatorias */}
       {modalIndicaciones && (
-        <div className="modal-overlay" onClick={() => setModalIndicaciones(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg indicaciones-print" onClick={e => e.stopPropagation()} style={{ maxHeight: '95vh' }}>
             <div className="modal-header">
               <span className="modal-title">Indicaciones post-operatorias</span>
@@ -1885,7 +1887,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Cobro de turno completado */}
       {modalCobro && turnoACobrar && (
-        <div className="modal-overlay" onClick={() => setModalCobro(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Cobrar turno</span>
@@ -1950,7 +1952,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Encuesta NPS / Satisfacción */}
       {showNPS && (
-        <div className="modal-overlay" onClick={() => { setShowNPS(null); setTurnoACobrar(null) }}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Pago registrado ✓</span>
@@ -1984,7 +1986,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Nuevo/Editar presupuesto */}
       {modalPresupuesto && (
-        <div className="modal-overlay" onClick={() => setModalPresupuesto(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg presupuesto-print" onClick={e => e.stopPropagation()} style={{ maxHeight: '95vh' }}>
             <div className="modal-header">
               <span className="modal-title">{presupuestoDetalle ? `Presupuesto #${presupuestoDetalle.numero}` : 'Nuevo Presupuesto'}</span>
@@ -2086,7 +2088,7 @@ export default function PacienteDetailPage() {
       )}
       {/* MODAL: Nuevo plan de pago */}
       {modalPlan && (
-        <div className="modal-overlay" onClick={() => setModalPlan(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Nuevo plan de pago</span>
@@ -2144,7 +2146,7 @@ export default function PacienteDetailPage() {
 
       {/* MODAL: Presupuesto aprobado → generar turnos */}
       {modalGenTurnos && (
-        <div className="modal-overlay" onClick={() => setModalGenTurnos(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
             <div className="modal-header">
               <span className="modal-title">Presupuesto aprobado</span>
@@ -2168,7 +2170,7 @@ export default function PacienteDetailPage() {
 
       {/* Modal confirmación genérico */}
       {modalConfirm && (
-        <div className="modal-overlay" onClick={() => setModalConfirm(null)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-body" style={{ padding: 24 }}>
               <p style={{ fontSize: '.95rem', marginBottom: 20 }}>{modalConfirm.msg}</p>

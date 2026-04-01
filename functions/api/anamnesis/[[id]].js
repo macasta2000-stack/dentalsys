@@ -5,6 +5,7 @@ export async function onRequestOptions() { return cors() }
 
 export async function onRequestGet({ request, data, env, params }) {
   const { user } = data
+  if (user.rol === 'recepcionista') return err('No tenés permiso para ver la anamnesis', 403)
   const url = new URL(request.url)
   const pacienteId = url.searchParams.get('paciente_id') ?? params?.id?.[0]
   if (!pacienteId) return err('paciente_id requerido')
@@ -15,9 +16,17 @@ export async function onRequestGet({ request, data, env, params }) {
 
 export async function onRequestPost({ request, data, env }) {
   const { user } = data
-  const body = await request.json()
+  if (user.rol === 'recepcionista') return err('No tenés permiso para modificar la anamnesis', 403)
+  let body
+  try { body = await request.json() } catch { return err('Body inválido — se esperaba JSON', 400) }
   const { paciente_id } = body
   if (!paciente_id) return err('paciente_id es requerido')
+
+  // Verificar que el paciente pertenece a este tenant
+  const pacienteCheck = await env.DB.prepare(
+    `SELECT id FROM pacientes WHERE id = ?1 AND tenant_id = ?2`
+  ).bind(paciente_id, user.sub).first()
+  if (!pacienteCheck) return err('Paciente no encontrado', 404)
 
   // Upsert por paciente_id
   const existing = await findOne(env.DB, 'anamnesis', { where: { paciente_id, tenant_id: user.sub } })

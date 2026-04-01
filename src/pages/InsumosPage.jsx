@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { usePlanFeatures } from '../hooks/usePlanFeatures'
+import UpgradePrompt from '../components/UpgradePrompt'
 
-export default function InsumosPage() {
+function InsumosPageInner() {
   const [insumos, setInsumos] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -79,16 +81,17 @@ export default function InsumosPage() {
         {loading ? (
           <div className="card-body" style={{ textAlign: 'center' }}><span className="spinner" /></div>
         ) : insumos.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📦</div>
-            <div className="empty-title">Sin insumos registrados</div>
-            <button className="btn btn-primary btn-sm mt-2" onClick={() => setModal(true)}>Agregar insumo</button>
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--c-text-3)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 12 }}>🗃️</div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Sin insumos registrados</div>
+            <div style={{ fontSize: '.85rem', marginBottom: 16 }}>Agregá tus materiales e insumos para controlar el stock.</div>
+            <button className="btn btn-primary btn-sm" onClick={() => setModal(true)}>Agregar insumo</button>
           </div>
         ) : (
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Insumo</th><th>Categoría</th><th>Stock actual</th><th>Stock mínimo</th><th>Proveedor</th><th>Estado</th><th></th></tr>
+                <tr><th>Insumo</th><th>Categoría</th><th>Stock actual</th><th>Stock mínimo</th><th>Precio</th><th>Proveedor</th><th>Estado</th><th></th></tr>
               </thead>
               <tbody>
                 {insumos.map(i => {
@@ -102,6 +105,7 @@ export default function InsumosPage() {
                       <td><span className="badge badge-neutral">{i.categoria}</span></td>
                       <td className="font-semibold">{i.stock_actual} {i.unidad}</td>
                       <td className="text-sm text-muted">{i.stock_minimo} {i.unidad}</td>
+                      <td className="text-sm">${i.precio_unitario?.toLocaleString('es-AR') ?? '—'}</td>
                       <td className="text-sm">{i.proveedor || '—'}</td>
                       <td><span className={`badge badge-${st.cls}`}>{st.label}</span></td>
                       <td>
@@ -120,7 +124,7 @@ export default function InsumosPage() {
 
       {/* Modal nuevo insumo */}
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">📦 Nuevo Insumo</span>
@@ -151,7 +155,7 @@ export default function InsumosPage() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Unidad</label>
-                    <input className="form-input" placeholder="unidad, caja, ml..." value={form.unidad} onChange={set('unidad')} />
+                    <input className="form-input" placeholder="" value={form.unidad} onChange={set('unidad')} />
                   </div>
                 </div>
                 <div className="form-row cols-2">
@@ -177,7 +181,7 @@ export default function InsumosPage() {
 
       {/* Modal movimiento de stock */}
       {movModal && (
-        <div className="modal-overlay" onClick={() => setMovModal(null)}>
+        <div className="modal-overlay">
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">± Ajustar Stock: {movModal.nombre}</span>
@@ -199,12 +203,12 @@ export default function InsumosPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">{movForm.tipo === 'ajuste' ? 'Nueva cantidad en stock' : 'Cantidad'} <span className="req">*</span></label>
-                  <input className="form-input" type="number" min="0" required value={movForm.cantidad} onChange={e => setMovForm(f => ({ ...f, cantidad: e.target.value }))} placeholder={movForm.tipo === 'ajuste' ? 'Ingresá el nuevo stock total...' : ''} />
+                  <input className="form-input" type="number" min="0" required value={movForm.cantidad} onChange={e => setMovForm(f => ({ ...f, cantidad: e.target.value }))} placeholder="" />
                   {movForm.tipo === 'ajuste' && <span className="form-hint">El stock quedará exactamente en este valor</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Motivo</label>
-                  <input className="form-input" placeholder="Compra, uso en tratamiento..." value={movForm.motivo} onChange={e => setMovForm(f => ({ ...f, motivo: e.target.value }))} />
+                  <input className="form-input" placeholder="" value={movForm.motivo} onChange={e => setMovForm(f => ({ ...f, motivo: e.target.value }))} />
                 </div>
                 {error && <div className="alert alert-danger">{error}</div>}
               </div>
@@ -218,4 +222,10 @@ export default function InsumosPage() {
       )}
     </div>
   )
+}
+
+export default function InsumosPage() {
+  const { hasFeature } = usePlanFeatures()
+  if (!hasFeature('insumos')) return <UpgradePrompt feature="insumos" />
+  return <InsumosPageInner />
 }

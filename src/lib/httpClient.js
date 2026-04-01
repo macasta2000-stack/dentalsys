@@ -130,6 +130,8 @@ export const _http = {
     prestaciones: (anio, mes) => request('GET', `/reportes?tipo=prestaciones&anio=${anio}&mes=${mes}`),
     pacientes: (anio, mes) => request('GET', `/reportes?tipo=pacientes&anio=${anio}&mes=${mes}`),
     comisiones: (anio, mes) => request('GET', `/reportes?tipo=comisiones&anio=${anio}&mes=${mes}`),
+    rentabilidad: (anio, mes) => request('GET', `/reportes?tipo=rentabilidad&anio=${anio}&mes=${mes}`),
+    profesional: (anio, mes) => request('GET', `/reportes?tipo=profesional&anio=${anio}&mes=${mes}`),
   },
   importar: {
     pacientes: (registros) => request('POST', '/import', { tipo: 'pacientes', registros }),
@@ -203,6 +205,31 @@ export const _http = {
     get: (turnoId) => request('GET', `/video-sessions?turno_id=${turnoId}`),
     create: (body) => request('POST', '/video-sessions', body),
     finalizar: (id) => request('PATCH', `/video-sessions/${id}`, { estado: 'finalizada' }),
+  },
+  gastos: {
+    list: ({ desde, hasta, categoria } = {}) => {
+      const q = new URLSearchParams()
+      if (desde) q.set('desde', desde)
+      if (hasta) q.set('hasta', hasta)
+      if (categoria) q.set('categoria', categoria)
+      return request('GET', `/gastos${q.toString() ? '?' + q : ''}`)
+    },
+    get: (id) => request('GET', `/gastos/${id}`),
+    create: (body) => request('POST', '/gastos', body),
+    update: (id, body) => request('PATCH', `/gastos/${id}`, body),
+    delete: (id) => request('DELETE', `/gastos/${id}`),
+  },
+  booking: {
+    getClinic: (slug) => request('GET', `/booking/${slug}`),
+    getSlots: (slug, fecha, profesionalId) => {
+      const q = new URLSearchParams({ fecha })
+      if (profesionalId) q.set('profesional_id', profesionalId)
+      return request('GET', `/booking/${slug}/slots?${q}`)
+    },
+    solicitar: (slug, body) => request('POST', `/booking/${slug}`, body),
+    listSolicitudes: () => request('GET', '/solicitudes-turno'),
+    aceptar: (id) => request('PATCH', `/solicitudes-turno/${id}`, { estado: 'confirmada' }),
+    rechazar: (id) => request('PATCH', `/solicitudes-turno/${id}`, { estado: 'rechazada' }),
   },
   comprobantes: {
     list: (pacienteId) => request('GET', `/comprobantes${pacienteId ? `?paciente_id=${pacienteId}` : ''}`),

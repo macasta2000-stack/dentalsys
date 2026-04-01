@@ -29,9 +29,9 @@ const ENDPOINT_STORE_MAP = {
   '/turnos': 'turnos',
   '/pacientes': 'pacientes',
   '/evoluciones': 'evoluciones',
-  '/caja': 'caja_movimientos',
-  '/pagos': 'caja_movimientos',
+  '/pagos': 'caja_movimientos',   // pagos se cachean en el store 'caja_movimientos'
   '/insumos': 'insumos',
+  // Nota: no existe endpoint /caja — los datos de caja provienen de /pagos
 }
 
 function resolveStore(path) {
@@ -301,6 +301,8 @@ export const apiOffline = {
   onboarding: _http.onboarding,
   developer: _http.developer,
   giftcards: _http.giftcards,
+  gastos: _http.gastos,
+  booking: _http.booking,
   encuestas: _http.encuestas,
 }
 

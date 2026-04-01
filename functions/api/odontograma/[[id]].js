@@ -17,7 +17,8 @@ export async function onRequestGet({ request, data, env, params }) {
 
 export async function onRequestPost({ request, data, env }) {
   const { user } = data
-  const body = await request.json()
+  let body
+  try { body = await request.json() } catch { return err('Body inválido — se esperaba JSON', 400) }
   const { paciente_id, numero_pieza, estado } = body
   if (!paciente_id || !numero_pieza) return err('paciente_id y numero_pieza requeridos')
 

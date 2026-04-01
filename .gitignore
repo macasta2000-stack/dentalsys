@@ -4,3 +4,6 @@ dist/
 .env.local
 .wrangler/
 *.local
+electron/dist-electron/
+electron/dist/
+*.exe

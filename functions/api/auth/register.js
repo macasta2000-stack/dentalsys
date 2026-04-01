@@ -5,7 +5,13 @@ import { PRESTACIONES_DEFAULT } from '../../_lib/preset.js'
 
 export async function onRequestOptions() { return cors() }
 
-export async function onRequestPost({ request, env }) {
+// El registro público está deshabilitado.
+// Las cuentas las crea el superadmin desde /admin
+export async function onRequestPost() {
+  return err('El registro público está deshabilitado. Contactá al administrador para obtener acceso.', 403)
+}
+
+export async function _onRequestPostOriginal({ request, env }) {
   try {
     const { email, password, nombre } = await request.json()
     if (!email || !password) return err('Email y contraseña requeridos')
@@ -29,7 +35,7 @@ export async function onRequestPost({ request, env }) {
     await insert(env.DB, 'configuracion', {
       id: uid(),
       tenant_id: userId,
-      nombre_consultorio: 'Mi Consultorio Odontológico',
+      nombre_consultorio: 'Mi Consultorio',
     })
 
     // Provisionar prestaciones default del preset

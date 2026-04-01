@@ -445,7 +445,7 @@ export default function DashboardPage() {
 
       {/* Modal cobro desde dashboard */}
       {modalCobro && turnoACobrar && (
-        <div className="modal-overlay" onClick={() => setModalCobro(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Cobrar turno</span>

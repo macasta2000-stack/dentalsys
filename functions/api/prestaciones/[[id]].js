@@ -18,7 +18,8 @@ export async function onRequestGet({ data, env, params }) {
 
 export async function onRequestPost({ request, data, env }) {
   const { user } = data
-  const body = await request.json()
+  let body
+  try { body = await request.json() } catch { return err('Body inválido — se esperaba JSON', 400) }
   if (!body.nombre) return err('Nombre es requerido')
   const p = await insert(env.DB, 'prestaciones', {
     id: newId(),
@@ -32,7 +33,8 @@ export async function onRequestPatch({ request, data, env, params }) {
   const { user } = data
   const id = params?.id?.[0]
   if (!id) return err('ID requerido')
-  const body = await request.json()
+  let body
+  try { body = await request.json() } catch { return err('Body inválido — se esperaba JSON', 400) }
   const updated = await update(env.DB, 'prestaciones', id, pick('prestaciones', body), user.sub)
   if (!updated) return notFound('Prestación')
   return ok(updated)

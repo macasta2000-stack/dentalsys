@@ -2,7 +2,7 @@
 // TODO: Implement offline-first sync when needed
 import Dexie from 'dexie'
 
-export const db = new Dexie('dentalsys')
+export const db = new Dexie('clingest')
 
 db.version(1).stores({
   pacientes: 'id, tenant_id, apellido',
